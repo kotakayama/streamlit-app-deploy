@@ -6,6 +6,18 @@ from typing import Dict, Optional, Tuple, List
 
 import pandas as pd
 import pdfplumber
+# pdfminer exception class (may not be available in all pdfplumber versions/environments)
+try:
+    from pdfplumber.utils import PdfminerException
+except Exception:
+    PdfminerException = None
+# pytesseract (optional runtime dependency) - check availability at import time
+try:
+    import pytesseract
+    from pytesseract import TesseractNotFoundError
+except Exception:
+    pytesseract = None
+    TesseractNotFoundError = None
 import streamlit as st
 
 # ----------------------------
@@ -151,7 +163,6 @@ def parse_pdf_financials(uploaded_file) -> dict:
     data = uploaded_file.read()
     dfs = []
     try:
-        from pdfplumber.utils import PdfminerException
         with pdfplumber.open(BytesIO(data)) as pdf:
             for p_idx, page in enumerate(pdf.pages):
                 try:
@@ -169,30 +180,43 @@ def parse_pdf_financials(uploaded_file) -> dict:
                         df = pd.DataFrame(rows)
                     df = df.rename(columns={df.columns[0]: "Item"})
                     dfs.append((p_idx, t_idx, df))
-    except PdfminerException as e:
-        import logging
-        logging.exception("PdfminerException during PDF parsing")
-        raise ValueError("PDFの解析に失敗しました（内部パーサーでエラー）。このPDFは暗号化、スキャン画像、または特殊フォーマットの可能性があります。PDFを別名で保存して再アップロードするか、Excelやテキストに変換して再度アップロードしてください。") from e
     except Exception as e:
         import logging
-        logging.exception("Unexpected error during PDF parsing")
+        logging.exception("Error during PDF parsing")
+        # If pdfminer-specific exception class is available, check instance
+        if PdfminerException is not None and isinstance(e, PdfminerException):
+            raise ValueError("PDFの解析に失敗しました（内部パーサーでエラー）。このPDFは暗号化、スキャン画像、または特殊フォーマットの可能性があります。PDFを別名で保存して再アップロードするか、Excelやテキストに変換して再度アップロードしてください。") from e
         raise ValueError("PDF解析中に予期しないエラーが発生しました。別のPDFをお試しください。") from e
 
     candidates = []
     for idx, (p_idx, t_idx, df) in enumerate(dfs):
-        year_cols = [c for c in df.columns if re.search(r"FY\d{4}", str(c))]
+        # Detect year-like columns or numeric columns that look like financial columns
+        year_cols = [c for c in df.columns if re.search(r"FY\d{4}", str(c)) or re.search(r"\b\d{4}\b", str(c))]
+        # If no explicit year columns, consider columns with many numeric-like cells
         if not year_cols:
-            continue
+            numeric_like = []
+            for i, c in enumerate(list(df.columns)[1:], start=1):
+                col_series = df.iloc[:, i].astype(str).fillna("")
+                # Some pages yield DataFrame slices; ensure we have a Series
+                if hasattr(col_series, 'str'):
+                    num_count = col_series.str.contains(r"\d").sum()
+                else:
+                    num_count = sum(1 for v in col_series if re.search(r"\d", str(v)))
+                if num_count >= max(1, int(0.4 * len(col_series))):
+                    numeric_like.append(c)
+            year_cols = numeric_like
+        # Coerce detected numeric columns
         for c in year_cols:
             df[c] = pd.to_numeric(df[c].astype(str).str.replace(r"[^0-9.\-]", "", regex=True), errors="coerce")
-        preview = "\n".join(df["Item"].astype(str).head(10).tolist())
+        # First column may be duplicated or ambiguous; use positional index for preview
+        preview = "\n".join(df.iloc[:, 0].astype(str).head(10).tolist())
         candidates.append({"id": idx, "page": p_idx, "table_index": t_idx, "df": df, "preview": preview})
 
     mapping = {}
     # Prioritize PL (損益計算書) and BS (貸借対照表) detection only
     for c in candidates:
         df = c['df']
-        text_sample = " ".join(df["Item"].astype(str).head(40).tolist()).lower()
+        text_sample = " ".join(df.iloc[:, 0].astype(str).head(40).tolist()).lower()
         pl_score = sum(bool(re.search(p, text_sample)) for p in ALIASES["revenue"] + ALIASES["ebitda"] + ALIASES["operating_income"] + ALIASES["net_income"])
         bs_score = sum(bool(re.search(p, text_sample)) for p in ALIASES["cash"] + ALIASES["debt"] + ALIASES["equity"] + ALIASES["shares"])
         scores = {"PL": pl_score, "BS": bs_score}
@@ -202,7 +226,111 @@ def parse_pdf_financials(uploaded_file) -> dict:
         if bs_score > 0 and "BS" not in mapping:
             mapping["BS"] = {"df": df, "score": bs_score, "page": c['page'], "table_index": c['table_index']}
 
-    return {"mapping": mapping, "candidates": candidates}
+    return {"mapping": mapping, "candidates": candidates, "raw_bytes": data}
+
+# ----------------------------
+# OCR helpers (fallback for scanned PDFs)
+# ----------------------------
+
+def _parse_number_like(s: str) -> Optional[float]:
+    if s is None:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    # Handle parentheses as negatives
+    negative = False
+    if s.startswith("(") and s.endswith(")"):
+        negative = True
+        s = s[1:-1]
+    # Remove currency symbols and spaces
+    s = re.sub(r"[^0-9\.,\-]", "", s)
+    if not s:
+        return None
+    # If comma used as thousand separator, remove it
+    if s.count(",") > 0 and s.count(".") == 0:
+        s = s.replace(",", "")
+    else:
+        # remove commas, keep dot as decimal
+        s = s.replace(",", "")
+    try:
+        v = float(s)
+        if negative:
+            v = -v
+        return v
+    except Exception:
+        return None
+
+
+def ocr_extract_metrics_from_bytes(data: bytes, target_year: str) -> dict:
+    """Use OCR to extract metric-like lines from PDF pages and build synthetic PL/BS DataFrames.
+    Returns dict with possible keys: 'pl_df', 'bs_df', 'metrics' where metrics is {metric_key: (value, detail)}.
+    """
+    if pytesseract is None:
+        raise ValueError("pytesseract is not available. Install pytesseract and system Tesseract to enable OCR.")
+
+    from io import BytesIO
+    metrics = {}
+    page_texts = []
+    try:
+        with pdfplumber.open(BytesIO(data)) as pdf:
+            for p_idx, page in enumerate(pdf.pages):
+                try:
+                    img = page.to_image(resolution=200).original
+                except Exception:
+                    # Fallback: extract a rasterized image of the whole page if available
+                    try:
+                        img = page.to_image().original
+                    except Exception:
+                        continue
+                try:
+                    txt = pytesseract.image_to_string(img, lang='jpn+eng') if pytesseract is not None else ''
+                except Exception as e:
+                    # Reraise Tesseract not found specifically to allow the caller to handle it
+                    if TesseractNotFoundError is not None and isinstance(e, TesseractNotFoundError):
+                        raise
+                    continue
+                if not txt:
+                    continue
+                page_texts.append((p_idx, txt))
+                for line in txt.splitlines():
+                    t = line.strip()
+                    if not t:
+                        continue
+                    low = t.lower()
+                    # search for metric labels
+                    for metric_key, patterns in ALIASES.items():
+                        if any(re.search(p, low) for p in patterns):
+                            # find first numeric token in the line
+                            m = re.search(r"[-\(]?[0-9][0-9\.,\)\(\-]+", t)
+                            if m:
+                                num = _parse_number_like(m.group(0))
+                                if num is not None and metric_key not in metrics:
+                                    metrics[metric_key] = (num, f"page {p_idx}: {t}")
+    except Exception as e:
+        import logging
+        logging.exception("OCR extraction failed")
+        raise
+
+    # Build synthetic DataFrames
+    pl_rows = []
+    bs_rows = []
+    for k in ['revenue', 'ebitda', 'operating_income', 'net_income']:
+        if k in metrics:
+            label_used = metrics[k][1].split(":", 1)[1].strip() if ':' in metrics[k][1] else k
+            pl_rows.append({'Item': label_used, target_year: metrics[k][0]})
+    for k in ['cash', 'debt', 'equity', 'shares']:
+        if k in metrics:
+            label_used = metrics[k][1].split(":", 1)[1].strip() if ':' in metrics[k][1] else k
+            bs_rows.append({'Item': label_used, target_year: metrics[k][0]})
+
+    res = {'metrics': metrics}
+    if pl_rows:
+        res['pl_df'] = pd.DataFrame(pl_rows)
+    if bs_rows:
+        res['bs_df'] = pd.DataFrame(bs_rows)
+    res['raw_texts'] = page_texts
+    return res
 
 # ----------------------------
 # UI
@@ -245,8 +373,42 @@ if f is not None:
         pdf_result = parse_pdf_financials(f)
         mapping = pdf_result.get('mapping', {})
         candidates = pdf_result.get('candidates', [])
+        used_ocr = False  # track whether OCR fallback provided data
         # For PDFs, we require only PL and BS for now
         missing = [s for s in ["PL", "BS"] if s not in mapping]
+
+        # If mapping is incomplete, try OCR fallback when available
+        if missing and pytesseract is not None and pdf_result.get('raw_bytes'):
+            st.info('テキスト抽出に失敗しました。OCRで画像から数値を抽出します（Tesseractが必要）。')
+            try:
+                ocr_res = ocr_extract_metrics_from_bytes(pdf_result.get('raw_bytes'), target_year)
+                if ocr_res.get('pl_df') is not None and 'PL' not in mapping:
+                    mapping['PL'] = {'df': ocr_res['pl_df'], 'score': 0, 'page': None, 'table_index': None}
+                    used_ocr = True
+                if ocr_res.get('bs_df') is not None and 'BS' not in mapping:
+                    mapping['BS'] = {'df': ocr_res['bs_df'], 'score': 0, 'page': None, 'table_index': None}
+                    used_ocr = True
+                # Recompute missing after OCR
+                missing = [s for s in ["PL", "BS"] if s not in mapping]
+                if not missing:
+                    st.success('OCRでPL/BSを抽出しました。結果を確認してください。')
+                    # Show OCR details
+                    if ocr_res.get('metrics'):
+                        st.subheader('OCR抽出（検出された項目）')
+                        ocr_rows = []
+                        for k, (v, d) in ocr_res.get('metrics', {}).items():
+                            ocr_rows.append({'metric_key': k, 'value': v, 'detail': d})
+                        st.dataframe(pd.DataFrame(ocr_rows))
+                    if ocr_res.get('raw_texts'):
+                        with st.expander('OCR元テキスト（ページ別）'):
+                            for p_idx, txt in ocr_res.get('raw_texts'):
+                                st.markdown(f'**Page {p_idx}**')
+                                st.text(txt)
+            except TesseractNotFoundError:
+                st.warning('システムにTesseractが見つかりません。OCRを使うにはTesseractをインストールしてください: https://github.com/tesseract-ocr/tesseract')
+            except Exception as e:
+                st.error(f'OCR実行中にエラーが発生しました: {e}')
+
         if missing:
             st.warning(f"PDFからPL/BSが自動検出できませんでした: {missing}。候補テーブルを表示します。手動で確認・選択してください。")
             st.subheader("検出されたテーブル候補（PL/BS 優先）")
@@ -329,7 +491,7 @@ if f is not None:
             captured_at=ts
         ))
 
-    source_type = "pdf" if is_pdf else "excel"
+    source_type = "pdf+ocr" if (is_pdf and used_ocr) else ("pdf" if is_pdf else "excel")
     add_prov("Revenue", rev, f"PL: {rev_src}", source_type=source_type)
     add_prov("EBITDA", ebitda, f"PL: {ebitda_src}", source_type=source_type)
     add_prov("Operating Income", op, f"PL: {op_src}", source_type=source_type)

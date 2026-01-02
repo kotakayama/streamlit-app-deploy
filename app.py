@@ -181,12 +181,30 @@ def parse_pdf_financials(uploaded_file) -> dict:
                     df = df.rename(columns={df.columns[0]: "Item"})
                     dfs.append((p_idx, t_idx, df))
     except Exception as e:
-        import logging
+        import logging, os, traceback
         logging.exception("Error during PDF parsing")
         # If pdfminer-specific exception class is available, check instance
         if PdfminerException is not None and isinstance(e, PdfminerException):
             raise ValueError("PDFの解析に失敗しました（内部パーサーでエラー）。このPDFは暗号化、スキャン画像、または特殊フォーマットの可能性があります。PDFを別名で保存して再アップロードするか、Excelやテキストに変換して再度アップロードしてください。") from e
-        raise ValueError("PDF解析中に予期しないエラーが発生しました。別のPDFをお試しください。") from e
+        # Save diagnostic info to disk to help debugging in deployed envs
+        try:
+            log_dir = os.path.join(os.path.dirname(__file__), "tmp_pdf_logs")
+            os.makedirs(log_dir, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d%H%M%S")
+            err_id = f"pdferr_{ts}"
+            pdf_path = os.path.join(log_dir, f"{err_id}.pdf")
+            log_path = os.path.join(log_dir, f"{err_id}.log")
+            with open(pdf_path, "wb") as fh:
+                fh.write(data)
+            with open(log_path, "w", encoding="utf-8") as fh:
+                fh.write("Traceback (most recent call last):\n")
+                fh.write(traceback.format_exc())
+                fh.write("\nException repr: ")
+                fh.write(repr(e))
+        except Exception:
+            logging.exception("Failed to write PDF parsing diagnostics")
+            err_id = "unknown"
+        raise ValueError(f"PDF解析中に予期しないエラーが発生しました（error id: {err_id}）。詳細はサーバ側ログまたは tmp_pdf_logs/{err_id}.log を確認してください。") from e
 
     candidates = []
     for idx, (p_idx, t_idx, df) in enumerate(dfs):
@@ -381,7 +399,7 @@ if f is not None:
             st.info("対処例: PDFを別名で保存して再アップロード、または Excel に変換してアップロードしてください。詳しいエラーはサーバーログに記録されています。")
             st.stop()
 
-        pdf_result = parse_pdf_financials(f)
+        pdf_result = pdf_sheets
         mapping = pdf_result.get('mapping', {})
         candidates = pdf_result.get('candidates', [])
         used_ocr = False  # track whether OCR fallback provided data

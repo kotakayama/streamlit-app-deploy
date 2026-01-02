@@ -205,9 +205,20 @@ def parse_pdf_financials(uploaded_file) -> dict:
                 if num_count >= max(1, int(0.4 * len(col_series))):
                     numeric_like.append(c)
             year_cols = numeric_like
-        # Coerce detected numeric columns
+        # Coerce detected numeric columns (use positional access to avoid DataFrame-like columns)
         for c in year_cols:
-            df[c] = pd.to_numeric(df[c].astype(str).str.replace(r"[^0-9.\-]", "", regex=True), errors="coerce")
+            try:
+                col_idx = df.columns.get_loc(c)
+            except Exception:
+                # If get_loc fails (e.g., unexpected column label), skip coercion for this entry
+                continue
+            # Work with positional Series to avoid .str issues when column labels are tuple/multiindex
+            col_ser = df.iloc[:, col_idx].astype(str).fillna("")
+            if hasattr(col_ser, 'str'):
+                cleaned = col_ser.str.replace(r"[^0-9.\-]", "", regex=True)
+            else:
+                cleaned = col_ser.apply(lambda x: re.sub(r"[^0-9.\-]", "", str(x)))
+            df.iloc[:, col_idx] = pd.to_numeric(cleaned, errors="coerce")
         # First column may be duplicated or ambiguous; use positional index for preview
         preview = "\n".join(df.iloc[:, 0].astype(str).head(10).tolist())
         candidates.append({"id": idx, "page": p_idx, "table_index": t_idx, "df": df, "preview": preview})

@@ -150,20 +150,33 @@ def parse_pdf_financials(uploaded_file) -> dict:
     from io import BytesIO
     data = uploaded_file.read()
     dfs = []
-    with pdfplumber.open(BytesIO(data)) as pdf:
-        for p_idx, page in enumerate(pdf.pages):
-            try:
-                tables = page.extract_tables() or []
-            except Exception:
-                tables = []
-            for t_idx, table in enumerate(tables):
-                if not table or len(table) < 2:
-                    continue
-                header = table[0]
-                rows = table[1:]
-                df = pd.DataFrame(rows, columns=header)
-                df = df.rename(columns={df.columns[0]: "Item"})
-                dfs.append((p_idx, t_idx, df))
+    try:
+        from pdfplumber.utils import PdfminerException
+        with pdfplumber.open(BytesIO(data)) as pdf:
+            for p_idx, page in enumerate(pdf.pages):
+                try:
+                    tables = page.extract_tables() or []
+                except Exception:
+                    tables = []
+                for t_idx, table in enumerate(tables):
+                    if not table or len(table) < 2:
+                        continue
+                    header = table[0]
+                    rows = table[1:]
+                    try:
+                        df = pd.DataFrame(rows, columns=header)
+                    except Exception:
+                        df = pd.DataFrame(rows)
+                    df = df.rename(columns={df.columns[0]: "Item"})
+                    dfs.append((p_idx, t_idx, df))
+    except PdfminerException as e:
+        import logging
+        logging.exception("PdfminerException during PDF parsing")
+        raise ValueError("PDFの解析に失敗しました（内部パーサーでエラー）。このPDFは暗号化、スキャン画像、または特殊フォーマットの可能性があります。PDFを別名で保存して再アップロードするか、Excelやテキストに変換して再度アップロードしてください。") from e
+    except Exception as e:
+        import logging
+        logging.exception("Unexpected error during PDF parsing")
+        raise ValueError("PDF解析中に予期しないエラーが発生しました。別のPDFをお試しください。") from e
 
     candidates = []
     for idx, (p_idx, t_idx, df) in enumerate(dfs):
@@ -223,7 +236,10 @@ if f is not None:
         try:
             pdf_sheets = parse_pdf_financials(f)
         except Exception as e:
+            import logging
+            logging.exception("PDF parsing failed in app flow")
             st.error(f"PDF解析に失敗しました: {e}")
+            st.info("対処例: PDFを別名で保存して再アップロード、または Excel に変換してアップロードしてください。詳しいエラーはサーバーログに記録されています。")
             st.stop()
 
         pdf_result = parse_pdf_financials(f)

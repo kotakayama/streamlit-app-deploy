@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local temporary artifact directories created by the app during parsing
+tmp_pdf_logs/
+tmp_pdf_extract/
+
+# Editor / OS
+.vscode/
+.DS_Store

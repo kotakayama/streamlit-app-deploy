@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple, List
 
 import pandas as pd
+import pdfplumber
 import streamlit as st
 
 # ----------------------------
@@ -140,11 +141,61 @@ def export_excel(
 
     return output.getvalue()
 
+def parse_pdf_financials(uploaded_file) -> dict:
+    """Extract tables from a PDF and attempt to map them to PL/BS/CF.
+    Returns a dict with keys:
+      - mapping: {"PL": df, "BS": df, "CF": df} for confident matches
+      - candidates: list of {"id": int, "page": int, "table_index": int, "df": DataFrame, "preview": str}
+    """
+    from io import BytesIO
+    data = uploaded_file.read()
+    dfs = []
+    with pdfplumber.open(BytesIO(data)) as pdf:
+        for p_idx, page in enumerate(pdf.pages):
+            try:
+                tables = page.extract_tables() or []
+            except Exception:
+                tables = []
+            for t_idx, table in enumerate(tables):
+                if not table or len(table) < 2:
+                    continue
+                header = table[0]
+                rows = table[1:]
+                df = pd.DataFrame(rows, columns=header)
+                df = df.rename(columns={df.columns[0]: "Item"})
+                dfs.append((p_idx, t_idx, df))
+
+    candidates = []
+    for idx, (p_idx, t_idx, df) in enumerate(dfs):
+        year_cols = [c for c in df.columns if re.search(r"FY\d{4}", str(c))]
+        if not year_cols:
+            continue
+        for c in year_cols:
+            df[c] = pd.to_numeric(df[c].astype(str).str.replace(r"[^0-9.\-]", "", regex=True), errors="coerce")
+        preview = "\n".join(df["Item"].astype(str).head(10).tolist())
+        candidates.append({"id": idx, "page": p_idx, "table_index": t_idx, "df": df, "preview": preview})
+
+    mapping = {}
+    # Prioritize PL (損益計算書) and BS (貸借対照表) detection only
+    for c in candidates:
+        df = c['df']
+        text_sample = " ".join(df["Item"].astype(str).head(40).tolist()).lower()
+        pl_score = sum(bool(re.search(p, text_sample)) for p in ALIASES["revenue"] + ALIASES["ebitda"] + ALIASES["operating_income"] + ALIASES["net_income"])
+        bs_score = sum(bool(re.search(p, text_sample)) for p in ALIASES["cash"] + ALIASES["debt"] + ALIASES["equity"] + ALIASES["shares"])
+        scores = {"PL": pl_score, "BS": bs_score}
+        # Require at least one matching keyword to consider it a candidate
+        if pl_score > 0 and "PL" not in mapping:
+            mapping["PL"] = {"df": df, "score": pl_score, "page": c['page'], "table_index": c['table_index']}
+        if bs_score > 0 and "BS" not in mapping:
+            mapping["BS"] = {"df": df, "score": bs_score, "page": c['page'], "table_index": c['table_index']}
+
+    return {"mapping": mapping, "candidates": candidates}
+
 # ----------------------------
 # UI
 # ----------------------------
-st.set_page_config(page_title="Valuation Automation (v1)", layout="wide")
-st.title("Valuation Automation (v1) — テンプレExcelから指標抽出→同業比較→根拠ログ")
+st.set_page_config(page_title="Valuation App", layout="wide")
+st.title("Valuation App")
 
 st.caption("v1: Web取得なし（手入力/CSVで代替）。v2で科目マッピングをLLM化、v3でWeb抽出を追加。")
 
@@ -157,8 +208,8 @@ with colA:
     unit = st.selectbox("数値単位（Excelと揃える）", ["円", "千円", "百万円", "億円"], index=2)
 
 with colB:
-    st.subheader("① 財務パッケージ（Excel）アップロード")
-    f = st.file_uploader("PL/BS/CFシートを含む .xlsx", type=["xlsx"])
+    st.subheader("① 決算書アップロード（Excel または PDF）")
+    f = st.file_uploader("PL/BS/CFシートを含む .xlsx または 決算書.pdf", type=["xlsx","pdf"])
 
 st.divider()
 
@@ -166,15 +217,56 @@ prov_logs: List[Provenance] = []
 financials = {}
 
 if f is not None:
-    xls = pd.ExcelFile(f)
-    missing = [s for s in REQUIRED_SHEETS if s not in xls.sheet_names]
-    if missing:
-        st.error(f"シートが足りません: {missing}（必要: {REQUIRED_SHEETS}）")
-        st.stop()
+    is_pdf = f.name.lower().endswith('.pdf') if getattr(f, 'name', None) else False
+    if is_pdf:
+        st.info('PDF をアップロードしました。自動抽出を試みます。解析に失敗した場合は手動で入力してください。')
+        try:
+            pdf_sheets = parse_pdf_financials(f)
+        except Exception as e:
+            st.error(f"PDF解析に失敗しました: {e}")
+            st.stop()
 
-    pl = read_sheet_table(xls, "PL")
-    bs = read_sheet_table(xls, "BS")
-    cf = read_sheet_table(xls, "CF")
+        pdf_result = parse_pdf_financials(f)
+        mapping = pdf_result.get('mapping', {})
+        candidates = pdf_result.get('candidates', [])
+        # For PDFs, we require only PL and BS for now
+        missing = [s for s in ["PL", "BS"] if s not in mapping]
+        if missing:
+            st.warning(f"PDFからPL/BSが自動検出できませんでした: {missing}。候補テーブルを表示します。手動で確認・選択してください。")
+            st.subheader("検出されたテーブル候補（PL/BS 優先）")
+            for c in candidates:
+                with st.expander(f"Table {c['id']} - page {c['page']}"):
+                    st.dataframe(c['df'])
+            manual_mapping = {}
+            for s in missing:
+                opts = ["(未選択)"] + [f"Table {c['id']}" for c in candidates]
+                choice = st.selectbox(f"{s} に割り当てるテーブルを選択してください", opts, key=f"map_{s}")
+                if choice.startswith("Table "):
+                    sel_id = int(choice.split()[1])
+                    sel_df = next((cd['df'] for cd in candidates if cd['id'] == sel_id), None)
+                    manual_mapping[s] = sel_df
+                else:
+                    manual_mapping[s] = None
+
+            pl = mapping.get('PL', {}).get('df') or manual_mapping.get('PL')
+            bs = mapping.get('BS', {}).get('df') or manual_mapping.get('BS')
+
+            if pl is None or bs is None:
+                st.error("PL と BS の両方が割り当てられていません。続行するには両方を割り当ててください。")
+                st.stop()
+        else:
+            pl = mapping.get('PL', {}).get('df')
+            bs = mapping.get('BS', {}).get('df')
+    else:
+        xls = pd.ExcelFile(f)
+        missing = [s for s in REQUIRED_SHEETS if s not in xls.sheet_names]
+        if missing:
+            st.error(f"シートが足りません: {missing}（必要: {REQUIRED_SHEETS}）")
+            st.stop()
+
+        pl = read_sheet_table(xls, "PL")
+        bs = read_sheet_table(xls, "BS")
+        cf = read_sheet_table(xls, "CF")
 
     # Extract metrics
     rev, rev_src = extract_metric(pl, "revenue", target_year)
@@ -210,31 +302,32 @@ if f is not None:
         "FCF": fcf,
     }
 
-    # Provenance logs (excel)
+    # Provenance logs
     ts = now_iso()
-    def add_prov(item, value, src):
+    def add_prov(item, value, src, source_type="excel"):
         if value is None:
             return
         prov_logs.append(Provenance(
             item=item, value=float(value), unit=unit,
-            source_type="excel", source_detail=src or "",
+            source_type=source_type, source_detail=src or "",
             captured_at=ts
         ))
 
-    add_prov("Revenue", rev, f"PL: {rev_src}")
-    add_prov("EBITDA", ebitda, f"PL: {ebitda_src}")
-    add_prov("Operating Income", op, f"PL: {op_src}")
-    add_prov("Net Income", ni, f"PL: {ni_src}")
-    add_prov("Cash", cash, f"BS: {cash_src}")
-    add_prov("Debt", debt, f"BS: {debt_src}")
-    add_prov("Equity", eq, f"BS: {eq_src}")
-    add_prov("Shares", shares, f"BS: {shares_src}")
-    add_prov("CFO", cfo, f"CF: {cfo_src}")
-    add_prov("CFI", cfi, f"CF: {cfi_src}")
+    source_type = "pdf" if is_pdf else "excel"
+    add_prov("Revenue", rev, f"PL: {rev_src}", source_type=source_type)
+    add_prov("EBITDA", ebitda, f"PL: {ebitda_src}", source_type=source_type)
+    add_prov("Operating Income", op, f"PL: {op_src}", source_type=source_type)
+    add_prov("Net Income", ni, f"PL: {ni_src}", source_type=source_type)
+    add_prov("Cash", cash, f"BS: {cash_src}", source_type=source_type)
+    add_prov("Debt", debt, f"BS: {debt_src}", source_type=source_type)
+    add_prov("Equity", eq, f"BS: {eq_src}", source_type=source_type)
+    add_prov("Shares", shares, f"BS: {shares_src}", source_type=source_type)
+    add_prov("CFO", cfo, f"CF: {cfo_src}", source_type=source_type)
+    add_prov("CFI", cfi, f"CF: {cfi_src}", source_type=source_type)
     if fcf is not None:
         prov_logs.append(Provenance(
             item="FCF", value=float(fcf), unit=unit,
-            source_type="excel" if fcf_src != "estimated from CFO + CFI" else "derived",
+            source_type=source_type if fcf_src != "estimated from CFO + CFI" else "derived",
             source_detail=f"CF: {fcf_src}",
             captured_at=ts,
             formula=None if fcf_src != "estimated from CFO + CFI" else "FCF = CFO + CFI",
@@ -371,3 +464,4 @@ if f is not None:
 
 else:
     st.info("まずはPL/BS/CF入りのテンプレExcelをアップロードしてください。")
+

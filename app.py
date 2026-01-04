@@ -260,12 +260,23 @@ with right:
         plan = st.session_state['plan_extract']
         st.subheader("E) Uploaded Business Plan")
         st.write(f"Sheet: {plan['sheet']}  Unit: {plan.get('unit')}")
-        st.dataframe(plan['wide'], use_container_width=True)
-        # long table（必要なら展開）
-        with st.expander("Long format (period, metric, value)"):
-            st.dataframe(plan['long'], use_container_width=True)
-        plan_xlsx = to_excel_bytes({"plan_wide": plan['wide'], "plan_long": plan['long']})
-        st.download_button("Download Extracted Plan", data=plan_xlsx, file_name="plan_extracted.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        if plan['wide'].empty:
+            st.warning("注: 抽出結果が空です。ヘッダ検出や科目列、年次列を確認します。下記は原本プレビューです（ヘッダ周辺）。")
+            if 'raw_preview' in plan:
+                st.dataframe(plan['raw_preview'], use_container_width=True)
+            st.write("検出情報:")
+            st.write({
+                "header_row": plan.get('header_row'),
+                "label_col": plan.get('label_col'),
+                "period_cols": [p.get('period') for p in plan.get('period_cols', [])],
+            })
+        else:
+            st.dataframe(plan['wide'], use_container_width=True)
+            # long table（必要なら展開）
+            with st.expander("Long format (period, metric, value)"):
+                st.dataframe(plan['long'], use_container_width=True)
+            plan_xlsx = to_excel_bytes({"plan_wide": plan['wide'], "plan_long": plan['long']})
+            st.download_button("Download Extracted Plan", data=plan_xlsx, file_name="plan_extracted.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     # --- DCF (v1): CF -> FCF -> PV 計算 ---
     if 'plan_tidy' in st.session_state:

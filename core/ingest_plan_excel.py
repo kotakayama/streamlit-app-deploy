@@ -75,12 +75,11 @@ def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
     wide = wide[wide.index.notna()]
     wide = wide.dropna(how="all")  # 全部NaN行は落とす
 
-    long = (
-        wide.reset_index()
-        .melt(id_vars=["index"], var_name="period", value_name="value")
-        .rename(columns={"index": "metric"})
-        .dropna(subset=["value"])
-    )
+    # reset_index() の最初の列名が必ずしも 'index' でないため動的に扱う
+    tmp = wide.reset_index()
+    metric_col = tmp.columns[0]
+    long = tmp.melt(id_vars=[metric_col], var_name="period", value_name="value")
+    long = long.rename(columns={metric_col: "metric"}).dropna(subset=["value"])
     long.insert(0, "sheet", sheet_name)
     long["unit"] = unit
 

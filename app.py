@@ -73,8 +73,44 @@ with right:
         for k, v in raw.get("shares", {}).items():
             evlog.add(field_name=f"shares.{k}", value=v, source_type="internal_pdf", page=sh_page, raw_label=k, unit="shares")
 
+        # --- 人間向けラベル（日本語） ---
+        DISPLAY_LABELS = {
+            "revenue": "売上高",
+            "gross_profit": "売上総利益",
+            "operating_income": "営業利益",
+            "ordinary_income": "経常利益",
+            "net_income": "当期純利益",
+            "ebitda": "EBITDA",
+            "cash": "現金及び預金",
+            "debt_short": "短期借入金",
+            "debt_long": "長期借入金",
+            "lease_liabilities": "リース債務",
+            "total_liabilities": "負債合計",
+            "total_equity": "純資産",
+            "shares_total": "発行済株式数",
+            "shares_common": "普通株式(株数)",
+        }
+
+        def humanize_keys(d: dict) -> dict:
+            out = {}
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    out[DISPLAY_LABELS.get(k, k)] = humanize_keys(v)
+                else:
+                    out[DISPLAY_LABELS.get(k, k)] = v
+            return out
+
         st.subheader("A) Raw extracted (from PDF)")
-        st.json({"raw": raw, "meta": meta})
+        # 表示用にキーを日本語化して出力
+        try:
+            human_raw = {
+                "pl": humanize_keys(raw.get("pl", {})),
+                "bs": humanize_keys(raw.get("bs", {})),
+                "shares": humanize_keys(raw.get("shares", {})),
+            }
+        except Exception:
+            human_raw = {"raw": raw}
+        st.json({"raw": human_raw, "meta": meta})
 
         # 標準化（LLM or ルール）
         standardized = {
@@ -100,7 +136,9 @@ with right:
                 evlog.add("standardize.status", "failed", source_type="llm", notes=str(e))
 
         st.subheader("B) Standardized (for valuation)")
-        st.dataframe(pd.DataFrame(standardized.items(), columns=["field", "value"]), use_container_width=True)
+        # 日本語ラベルを併記して表示
+        std_df = pd.DataFrame([{"field": k, "label": DISPLAY_LABELS.get(k, k), "value": v} for k, v in standardized.items()])
+        st.dataframe(std_df["label value"].tolist() if False else std_df[["label", "value"]].rename(columns={"label": "項目", "value": "値"}), use_container_width=True)
 
         # 時価総額の決定：手入力優先 → 価格×株式数（株式数はPDF or 上書き）
         shares_for_mcap = shares_override if shares_override > 0 else (standardized.get("shares_total") or 0)
@@ -138,12 +176,27 @@ with right:
 
         st.subheader("D) Evidence Log")
         ev_df = evlog.to_df()
-        st.dataframe(ev_df, use_container_width=True)
+        # 人間向けラベル列を追加
+        def resolve_field_label(field_name: str) -> str:
+            if not field_name:
+                return ""
+            key = field_name.split('.')[-1]
+            return DISPLAY_LABELS.get(key, field_name)
+        if not ev_df.empty:
+            ev_df = ev_df.copy()
+            ev_df["項目"] = ev_df["field_name"].apply(resolve_field_label)
+            # 表示順を調整
+            cols = ["項目"] + [c for c in ev_df.columns if c != "項目"]
+            st.dataframe(ev_df[cols], use_container_width=True)
+        else:
+            st.dataframe(ev_df, use_container_width=True)
 
         # Export
+        # 標準化シートは日本語ラベル列（項目, 値）を出力
+        standardized_export = std_df[["label", "value"]].rename(columns={"label": "項目", "value": "値"}) if 'std_df' in locals() else pd.DataFrame(standardized.items(), columns=["field", "value"])
         xlsx = to_excel_bytes({
             "valuation": table,
-            "standardized": pd.DataFrame(standardized.items(), columns=["field", "value"]),
+            "standardized": standardized_export,
             "evidence": ev_df,
         })
         st.download_button("Download Excel", data=xlsx, file_name="valuation_output.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

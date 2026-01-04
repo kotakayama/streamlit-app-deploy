@@ -10,6 +10,8 @@ from core.ingest_plan_excel import list_sheet_names, extract_yearly_table
 from core.evidence import EvidenceLog
 from core.compute import compute_metrics, compute_valuation_table
 from core.export import to_excel_bytes
+import numpy as np
+from core.dcf_from_plan import build_fcf_from_cf, run_dcf, sensitivity_wacc_g
 
 # LLM正規化は任意（OFFでも動く）
 USE_LLM = True
@@ -43,6 +45,8 @@ with left:
                 try:
                     plan_results = extract_yearly_table(plan_file, sheet_choice)
                     st.session_state['plan_extract'] = plan_results
+                    # plan_tidy は long format を保持（sheet, metric, period, value, unit）
+                    st.session_state['plan_tidy'] = plan_results['long']
                     st.success(f"Sheet {sheet_choice} extracted: {len(plan_results['wide'])} rows, {len(plan_results['wide'].columns)} periods")
                 except Exception as e:
                     st.error(f"Plan extraction failed: {e}")
@@ -262,5 +266,80 @@ with right:
             st.dataframe(plan['long'], use_container_width=True)
         plan_xlsx = to_excel_bytes({"plan_wide": plan['wide'], "plan_long": plan['long']})
         st.download_button("Download Extracted Plan", data=plan_xlsx, file_name="plan_extracted.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # --- DCF (v1): CF -> FCF -> PV 計算 ---
+    if 'plan_tidy' in st.session_state:
+        st.header("DCF（v1）: CFからFCFを生成して算定")
+        plan_tidy = st.session_state['plan_tidy']
+
+        # 使える年次period候補（xx/xx期だけ）
+        periods_all = sorted(plan_tidy["period"].dropna().astype(str).unique().tolist())
+        fy_periods = [p for p in periods_all if "期" in p and "/" in p]
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            selected_periods = st.multiselect("DCFに使う年次（期）", fy_periods, default=fy_periods[-4:] if len(fy_periods) >= 4 else fy_periods)
+        with col2:
+            wacc = st.number_input("WACC", value=0.09, step=0.005, format="%.3f")
+            g = st.number_input("永続成長率 g", value=0.015, step=0.001, format="%.3f")
+            mid_year = st.checkbox("Mid-year convention", value=True)
+        with col3:
+            net_debt = st.number_input("Net Debt（円）※v1は手入力でもOK", value=0.0)
+            fd_shares = st.number_input("Fully Diluted Shares（株）", value=1.0, min_value=1.0)
+
+        if st.button("DCF計算"):
+            if not selected_periods:
+                st.error("DCFに使う年次（期）を選んでください。")
+                st.stop()
+
+            fcf_df = build_fcf_from_cf(plan_tidy, selected_periods)
+            st.subheader("FCF（= 営業活動CF + 投資活動CF）")
+            st.dataframe(fcf_df, use_container_width=True)
+
+            dcf = run_dcf(fcf_df, wacc=wacc, g=g, mid_year=mid_year)
+
+            ev = dcf["enterprise_value"]
+            equity_value = ev - float(net_debt)
+            price = equity_value / float(fd_shares)
+
+            st.subheader("DCF結果")
+            st.write(f"Enterprise Value (EV): {ev:,.0f} 円")
+            st.write(f"Equity Value: {equity_value:,.0f} 円  （EV - Net Debt）")
+            st.write(f"Implied Price per Share: {price:,.2f} 円")
+
+            st.subheader("DCF計算詳細（PV）")
+            st.dataframe(dcf["detail"], use_container_width=True)
+
+            # 感度（WACC×g）
+            w_grid = [max(0.001, wacc + x) for x in np.arange(-0.02, 0.0201, 0.005)]
+            g_grid = [max(-0.01, g + x) for x in np.arange(-0.01, 0.0101, 0.0025)]
+            sens = sensitivity_wacc_g(fcf_df, w_grid, g_grid, mid_year=mid_year)
+            st.subheader("感度（EV）：WACC × g")
+            st.dataframe(sens, use_container_width=True)
+
+            # Export
+            xlsx = to_excel_bytes({
+                "fcf": fcf_df,
+                "dcf_detail": dcf["detail"],
+                "sensitivity_ev": sens.reset_index().rename(columns={"index": "wacc"}),
+                "assumptions": pd.DataFrame([
+                    ["wacc", wacc],
+                    ["g", g],
+                    ["mid_year", mid_year],
+                    ["net_debt", net_debt],
+                    ["fd_shares", fd_shares],
+                    ["enterprise_value", ev],
+                    ["equity_value", equity_value],
+                    ["price_per_share", price],
+                ], columns=["key", "value"])
+            })
+            st.download_button(
+                "Download DCF Excel",
+                data=xlsx,
+                file_name="dcf_output.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    else:
+        st.info("先に事業計画Excelをアップロードして取り込んでください（plan_tidyが必要です）。")
 
 

@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from core.ingest_pdf import ingest_financials_from_pdf
+from core.ingest_plan_excel import list_sheet_names, extract_yearly_table
 from core.evidence import EvidenceLog
 from core.compute import compute_metrics, compute_valuation_table
 from core.export import to_excel_bytes
@@ -20,8 +21,8 @@ if USE_LLM:
 
 load_dotenv()
 
-st.set_page_config(page_title="Valuation Workbench (PoC)", layout="wide")
-st.title("Valuation Workbench (PoC) - PDF Ingest v1")
+st.set_page_config(page_title="Valuation App", layout="wide")
+st.title("Valuation App")
 
 if not os.getenv("OPENAI_API_KEY"):
     st.warning("OPENAI_API_KEY が未設定です（LLM正規化をONにするなら .env に設定してください）")
@@ -31,6 +32,22 @@ left, right = st.columns([1, 2])
 with left:
     st.header("1) Upload")
     pdf_file = st.file_uploader("決算書PDF", type=["pdf"])
+
+    st.subheader("事業計画 (Excel)")
+    plan_file = st.file_uploader("事業計画ファイルをアップロード", type=["xls", "xlsx"], help="FS_年次様式のExcelを想定")
+    if plan_file is not None:
+        try:
+            sheets = list_sheet_names(plan_file)
+            sheet_choice = st.selectbox("Sheetを選択", sheets)
+            if st.button("Extract Plan", key="extract_plan"):
+                try:
+                    plan_results = extract_yearly_table(plan_file, sheet_choice)
+                    st.session_state['plan_extract'] = plan_results
+                    st.success(f"Sheet {sheet_choice} extracted: {len(plan_results['wide'])} rows, {len(plan_results['wide'].columns)} periods")
+                except Exception as e:
+                    st.error(f"Plan extraction failed: {e}")
+        except Exception as e:
+            st.error(f"Excel読み込みエラー: {e}")
 
     st.header("2) Company & assumptions")
     company = st.text_input("対象企業名", "")
@@ -58,6 +75,11 @@ with right:
         url_list = [u.strip() for u in urls.splitlines() if u.strip()]
         for u in url_list:
             evlog.add_url(u)
+
+        # もし事業計画がセッションにあれば、根拠ログに追加
+        if 'plan_extract' in st.session_state:
+            plan = st.session_state['plan_extract']
+            evlog.add("plan.sheet", plan['sheet'], source_type="plan_excel", raw_label=plan['sheet'], notes=f"unit={plan.get('unit')}")
 
         raw, meta = ingest_financials_from_pdf(pdf_file)
 
@@ -215,12 +237,30 @@ with right:
         # Export
         # 標準化シートは日本語ラベル列（項目, 値）を出力
         standardized_export = std_df[["label", "value"]].rename(columns={"label": "項目", "value": "値"}) if 'std_df' in locals() else pd.DataFrame(standardized.items(), columns=["field", "value"])
-        xlsx = to_excel_bytes({
+        sheets = {
             "valuation": table,
             "standardized": standardized_export,
             "evidence": ev_df,
-        })
+        }
+        if 'plan_extract' in st.session_state:
+            plan = st.session_state['plan_extract']
+            sheets["plan_wide"] = plan['wide']
+            sheets["plan_long"] = plan['long']
+
+        xlsx = to_excel_bytes(sheets)
         st.download_button("Download Excel", data=xlsx, file_name="valuation_output.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.download_button("Download Evidence JSON", data=json.dumps(evlog.to_dict(), ensure_ascii=False, indent=2), file_name="evidence.json", mime="application/json")
+
+    # Plan preview (アップロード済みの事業計画を表示)
+    if 'plan_extract' in st.session_state:
+        plan = st.session_state['plan_extract']
+        st.subheader("E) Uploaded Business Plan")
+        st.write(f"Sheet: {plan['sheet']}  Unit: {plan.get('unit')}")
+        st.dataframe(plan['wide'], use_container_width=True)
+        # long table（必要なら展開）
+        with st.expander("Long format (period, metric, value)"):
+            st.dataframe(plan['long'], use_container_width=True)
+        plan_xlsx = to_excel_bytes({"plan_wide": plan['wide'], "plan_long": plan['long']})
+        st.download_button("Download Extracted Plan", data=plan_xlsx, file_name="plan_extracted.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 

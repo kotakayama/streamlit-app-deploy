@@ -82,9 +82,15 @@ with right:
             "net_income": "当期純利益",
             "ebitda": "EBITDA",
             "cash": "現金及び預金",
+            "cash_and_deposits": "現金及び預金",
+            "current_assets": "流動資産",
+            "fixed_assets": "固定資産",
             "debt_short": "短期借入金",
             "debt_long": "長期借入金",
+            "short_term_debt": "短期借入金",
             "lease_liabilities": "リース債務",
+            "current_liabilities": "流動負債",
+            "fixed_liabilities": "固定負債",
             "total_liabilities": "負債合計",
             "total_equity": "純資産",
             "shares_total": "発行済株式数",
@@ -171,8 +177,23 @@ with right:
 
         table = compute_valuation_table(company or "Target", base, include_lease=include_lease)
 
+        # Valuation 表の項目を日本語化して表示
+        VAL_LABELS = {
+            "Company": "対象企業",
+            "Market Cap": "時価総額",
+            "Net Debt": "ネット・デット（純有利子負債）",
+            "Lease (included)": "リース（含む）",
+            "Lease (excluded)": "リース（除く）",
+            "EV": "企業価値（EV）",
+            "EV/Sales": "EV/売上高",
+            "EV/EBITDA": "EV/EBITDA",
+            "PER": "PER",
+        }
+        disp_table = table.copy()
+        disp_table["Metric"] = disp_table["Metric"].map(VAL_LABELS).fillna(disp_table["Metric"])
+        disp_table = disp_table.rename(columns={"Metric": "項目", "Value": "値"})
         st.subheader("C) Valuation Table")
-        st.dataframe(table, use_container_width=True)
+        st.dataframe(disp_table, use_container_width=True)
 
         st.subheader("D) Evidence Log")
         ev_df = evlog.to_df()

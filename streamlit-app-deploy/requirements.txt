@@ -1,0 +1,7 @@
+streamlit
+pandas
+openpyxl
+pdfplumber
+pydantic
+python-dotenv
+openai

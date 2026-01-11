@@ -1,0 +1,5 @@
+{
+  "fcf": ["FCF", "Free Cash Flow", "Free Cashflow", "フリーキャッシュフロー", "フリーCF", "FCF(推定)"],
+  "operating_cf": ["営業活動によるキャッシュフロー", "営業CF", "営業キャッシュフロー", "Operating cash flow", "Operating CF", "Cash flow from operations"],
+  "investing_cf": ["投資活動によるキャッシュフロー", "投資CF", "投資キャッシュフロー", "Investing cash flow", "Investing CF"]
+}

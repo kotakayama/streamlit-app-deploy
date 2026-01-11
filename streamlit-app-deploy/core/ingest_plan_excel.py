@@ -1,5 +1,6 @@
 import re
 import pandas as pd
+from datetime import datetime
 
 FISCAL_RE = re.compile(r"^\s*\d{1,2}[/／]\d{1,2}期\s*$")  # 例: 24/11期, 25/5期（全角スラッシュ対応）
 
@@ -15,12 +16,49 @@ def _norm_cell(x) -> str:
     return s.strip()
 
 
+def _is_date_like(val: object) -> bool:
+    """Check if a cell value looks like a date or period marker"""
+    if pd.isna(val):
+        return False
+    if isinstance(val, datetime):
+        return True
+    s = str(val).strip()
+    if not s:
+        return False
+    # common date-like patterns
+    if re.search(r"\d{4}[-/年]", s):
+        return True
+    if re.match(r"FY\s*\d{2,4}", s, flags=re.IGNORECASE):
+        return True
+    if re.match(r"CY\s*\d{2,4}", s, flags=re.IGNORECASE):
+        return True
+    if re.match(r"^\d{4}$", s):
+        return True
+    if FISCAL_RE.match(s):  # ◯◯/◯◯期
+        return True
+    # check datetime
+    try:
+        datetime.fromisoformat(s)
+        return True
+    except Exception:
+        pass
+    return False
+
+
 def _find_header_row(df: pd.DataFrame) -> int | None:
     # "Unit:" がある行をヘッダ行とみなす（このサンプルに強い）
     for r in range(min(30, len(df))):
         row = df.iloc[r].astype(object).apply(_norm_cell)
         if row.str.contains("Unit:", na=False).any():
             return r
+    
+    # Fallback: 日付パターンが3つ以上ある行をヘッダー行とする
+    for r in range(min(30, len(df))):
+        row = df.iloc[r]
+        date_like_count = sum(_is_date_like(c) for c in row)
+        if date_like_count >= 3:
+            return r
+    
     return None
 
 
@@ -53,7 +91,7 @@ def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
 
     header_row = _find_header_row(df)
     if header_row is None:
-        raise ValueError(f"Header row not found in sheet={sheet_name} (no 'Unit:')")
+        raise ValueError(f"Header row not found in sheet={sheet_name}")
 
     headers = df.iloc[header_row].tolist()
 
@@ -70,15 +108,27 @@ def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
         h_norm = _norm_cell(h)
         if FISCAL_RE.match(h_norm):
             period_cols.append({"col": c, "period": h_norm})
+    
     if not period_cols:
         # ゆるい判定: '期' と '/' を含むヘッダを年度列とみなす
         for c, h in enumerate(headers):
             h_norm = _norm_cell(h)
             if "期" in h_norm and "/" in h_norm:
                 period_cols.append({"col": c, "period": h_norm})
+    
+    if not period_cols:
+        # さらにフォールバック: _is_date_like で判定（datetime、FY、年数値など）
+        for c, h in enumerate(headers):
+            if _is_date_like(h):
+                # period文字列を正規化
+                if isinstance(h, datetime):
+                    period_str = h.strftime("%Y-%m-%d")
+                else:
+                    period_str = str(h).strip()
+                period_cols.append({"col": c, "period": period_str})
 
     if not period_cols:
-        raise ValueError(f"No fiscal-year columns like '24/11期' found in sheet={sheet_name}")
+        raise ValueError(f"No period columns found in sheet={sheet_name}")
 
     label_col = _find_label_col(df, header_row)
 

@@ -437,15 +437,37 @@ with right:
                     wacc_ev = st.session_state['wacc_calculated']
                     pv_tv = st.session_state['pv_terminal_value']
                     
+                    # Terminal Valueで選択された期間の情報を取得
+                    tv_display_start = st.session_state.get('tv_display_start', None)
+                    tv_display_end = st.session_state.get('tv_display_end', None)
+                    
                     # FCF予測期間のPV計算
                     if not fcf_plan_data.empty:
                         fcf_col = [c for c in fcf_plan_data.columns if c.upper() == 'FCF']
+                        period_col = [c for c in fcf_plan_data.columns if c.lower() == 'period']
+                        
                         if fcf_col:
                             fcf_values = pd.to_numeric(fcf_plan_data[fcf_col[0]], errors='coerce').dropna()
                             
-                            # Mid-year convention: 各年のPV計算
+                            # Terminal Valueで選択された期間のインデックスを取得
+                            start_idx = 0
+                            end_idx = len(fcf_values) - 1
+                            
+                            if period_col and tv_display_start and tv_display_end:
+                                periods = fcf_plan_data[period_col[0]].astype(str).tolist()
+                                try:
+                                    start_idx = periods.index(tv_display_start)
+                                    end_idx = periods.index(tv_display_end)
+                                except ValueError:
+                                    # 期間が見つからない場合は全期間を使用
+                                    pass
+                            
+                            # 選択された期間のみを抽出
+                            fcf_values_selected = fcf_values.iloc[start_idx:end_idx+1]
+                            
+                            # Mid-year convention: 各年のPV計算（選択された期間のみ）
                             pv_fcf_list = []
-                            for i, fcf in enumerate(fcf_values, start=1):
+                            for i, fcf in enumerate(fcf_values_selected, start=1):
                                 pv = fcf / ((1 + wacc_ev) ** (i - 0.5))  # Mid-year convention
                                 pv_fcf_list.append(pv)
                             
@@ -453,9 +475,13 @@ with right:
                         else:
                             pv_fcf_sum = 0.0
                             pv_fcf_list = []
+                            fcf_values_selected = pd.Series()
+                            start_idx = 0
                     else:
                         pv_fcf_sum = 0.0
                         pv_fcf_list = []
+                        fcf_values_selected = pd.Series()
+                        start_idx = 0
                     
                     # 事業価値 = PV(FCF予測) + PV(TV)
                     enterprise_value = pv_fcf_sum + pv_tv
@@ -469,12 +495,18 @@ with right:
                         st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>事業価値 (EV)</div><div style='font-size: 2.25rem; font-weight: 600;'>{enterprise_value:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     
                     st.write("**FCF予測期間の内訳（mid-year convention）:**")
-                    if pv_fcf_list:
+                    if pv_fcf_list and len(fcf_values_selected) > 0:
                         fcf_detail_data = []
-                        fcf_values_display = pd.to_numeric(fcf_plan_data[fcf_col[0]], errors='coerce').dropna()
-                        for i, (fcf, pv) in enumerate(zip(fcf_values_display, pv_fcf_list), start=1):
+                        # 選択された期間のFCF値を使用
+                        period_labels = []
+                        if period_col and tv_display_start and tv_display_end:
+                            periods = fcf_plan_data[period_col[0]].astype(str).tolist()
+                            period_labels = periods[start_idx:start_idx+len(fcf_values_selected)]
+                        
+                        for i, (fcf, pv) in enumerate(zip(fcf_values_selected, pv_fcf_list), start=1):
+                            year_label = period_labels[i-1] if i-1 < len(period_labels) else f"Year {i}"
                             fcf_detail_data.append({
-                                "年": f"Year {i}",
+                                "年": year_label,
                                 "FCF": f"{fcf:,.0f}",
                                 "PV": f"{pv:,.0f}"
                             })

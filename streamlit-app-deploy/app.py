@@ -350,7 +350,8 @@ with right:
                             fcf_last = period_to_fcf[end_period]
                             forecast_years = end_index - start_index + 1  # 期間の年数
                             
-                            st.write(f"**最終年FCF**: {fcf_last:,.0f} 百万円")
+                            st.write(f"**最終年FCF**: {fcf_last:,.0f}")
+                            st.markdown(f"<span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
                             st.write(f"**予測期間**: {forecast_years} 年 ({start_period} 〜 {end_period})")
                         else:
                             st.warning("FCFデータが見つかりません")
@@ -381,12 +382,12 @@ with right:
                     pv_tv = st.session_state['pv_terminal_value']
                     col_tv_res1, col_tv_res2 = st.columns(2)
                     with col_tv_res1:
-                        st.metric("Terminal Value", f"{tv:,.0f} 百万円")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>Terminal Value</div><div style='font-size: 2.25rem; font-weight: 600;'>{tv:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     with col_tv_res2:
-                        st.metric("Terminal Value (PV)", f"{pv_tv:,.0f} 百万円")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>Terminal Value (PV)</div><div style='font-size: 2.25rem; font-weight: 600;'>{pv_tv:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     st.write("**計算式:**")
-                    st.write(f"TV = {fcf_last:,.0f} × (1 + {g*100:.2f}%) / ({wacc_tv*100:.2f}% − {g*100:.2f}%) = {tv:,.0f} 百万円")
-                    st.write(f"PV(TV) = {tv:,.0f} / (1 + {wacc_tv*100:.2f}%)^{forecast_years} = {pv_tv:,.0f} 百万円")
+                    st.markdown(f"TV = {fcf_last:,.0f} × (1 + {g*100:.2f}%) / ({wacc_tv*100:.2f}% − {g*100:.2f}%) = {tv:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
+                    st.markdown(f"PV(TV) = {tv:,.0f} / (1 + {wacc_tv*100:.2f}%)^{forecast_years} = {pv_tv:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
                 
                 # 事業価値・株式価値セクション（Terminal Value計算後に表示）
                 if 'pv_terminal_value' in st.session_state and 'wacc_calculated' in st.session_state:
@@ -422,12 +423,11 @@ with right:
                     
                     col_ev1, col_ev2, col_ev3 = st.columns(3)
                     with col_ev1:
-                        st.metric("PV(FCF予測期間)", f"{pv_fcf_sum:,.0f} 百万円")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>PV(FCF予測期間)</div><div style='font-size: 2.25rem; font-weight: 600;'>{pv_fcf_sum:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     with col_ev2:
-                        st.metric("PV(Terminal Value)", f"{pv_tv:,.0f} 百万円")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>PV(Terminal Value)</div><div style='font-size: 2.25rem; font-weight: 600;'>{pv_tv:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     with col_ev3:
-                        st.metric("事業価値 (EV)", f"{enterprise_value:,.0f} 百万円", 
-                                  help="Enterprise Value = PV(FCF予測) + PV(TV)")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>事業価値 (EV)</div><div style='font-size: 2.25rem; font-weight: 600;'>{enterprise_value:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     
                     st.write("**FCF予測期間の内訳（mid-year convention）:**")
                     if pv_fcf_list:
@@ -484,10 +484,9 @@ with right:
                     cash_input = st.session_state.get('cash_for_equity', standardized_bs.get('cash', 0) / 1_000_000)
                     col_eq_res1, col_eq_res2 = st.columns(2)
                     with col_eq_res1:
-                        st.metric("純有利子負債", f"{net_debt:,.0f} 百万円")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>純有利子負債</div><div style='font-size: 2.25rem; font-weight: 600;'>{net_debt:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     with col_eq_res2:
-                        st.metric("株式価値", f"{equity_value:,.0f} 百万円",
-                                  help="Equity Value = EV − Net Debt")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>株式価値</div><div style='font-size: 2.25rem; font-weight: 600;'>{equity_value:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     st.write("**計算式:**")
                     st.write(f"純有利子負債 = {debt_input:,.0f} − {cash_input:,.0f} = {net_debt:,.0f} 円")
                     st.write(f"株式価値 = {enterprise_value:,.0f} − {net_debt:,.0f} = {equity_value:,.0f} 円")
@@ -504,7 +503,7 @@ with right:
                     
                     col_sh1, col_sh2 = st.columns(2)
                     with col_sh1:
-                        st.write(f"**株式価値**: {equity_value_for_share:,.0f} 百万円")
+                        st.markdown(f"**株式価値**: {equity_value_for_share:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
                         shares_input = st.number_input("発行済株式数 (株)", 
                                                        value=float(shares_default), 
                                                        format="%.0f", 
@@ -527,7 +526,7 @@ with right:
                                           help=f"株式価値 {equity_value_for_share:,.0f}百万円 ÷ {shares_calc:,.0f}株")
                                 
                                 st.write("**計算式:**")
-                                st.write(f"1株当たり価値 = {equity_value_for_share:,.0f}百万円 × 1,000,000 ÷ {shares_calc:,.0f}株 = {price_per_share:,.2f} 円")
+                                st.markdown(f"1株当たり価値 = {equity_value_for_share:,.0f}<span style='font-size: 0.8em;'>百万円</span> × 1,000,000 ÷ {shares_calc:,.0f}株 = {price_per_share:,.2f} 円", unsafe_allow_html=True)
                     
                     with col_sh2:
                         pass

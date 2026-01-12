@@ -543,29 +543,41 @@ with right:
                     col_sh1, col_sh2 = st.columns(2)
                     with col_sh1:
                         st.markdown(f"**株式価値**: {equity_value_for_share:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
-                        shares_input = st.number_input("発行済株式数 (株)", 
-                                                       value=float(shares_default), 
-                                                       format="%.0f", 
-                                                       key="shares_for_price",
-                                                       help="完全希薄化後の発行済株式数を入力してください")
                         
-                        st.write("")
-                        if st.button("▶️ 理論株価を計算する", key="price_per_share_calc_btn", type="secondary"):
-                            shares_calc = st.session_state.get('shares_for_price', shares_default)
+                        # フォームを使用して、値の変更時の自動再実行を防止
+                        with st.form(key="share_price_form"):
+                            # デフォルト値を設定（保存された値があればそれを使用）
+                            default_shares = st.session_state.get('shares_used', shares_default) if 'shares_used' in st.session_state else shares_default
                             
-                            if shares_calc <= 0:
+                            shares_input = st.number_input("発行済株式数 (株)", 
+                                                           value=float(default_shares), 
+                                                           format="%.0f",
+                                                           help="完全希薄化後の発行済株式数を入力してください")
+                            
+                            st.write("")
+                            submit_button = st.form_submit_button("▶️ 理論株価を計算する", type="secondary")
+                        
+                        # フォーム送信時の処理
+                        if submit_button:
+                            if shares_input <= 0:
                                 st.error("発行済株式数は正の値である必要があります")
                             else:
                                 # equity_value_for_shareは百万円単位なので、円に変換してから計算
-                                price_per_share = (equity_value_for_share * 1_000_000) / shares_calc
+                                price_per_share = (equity_value_for_share * 1_000_000) / shares_input
                                 st.session_state['price_per_share'] = price_per_share
-                                st.session_state['shares_used'] = shares_calc
-                                
-                                st.metric("1株当たり価値", f"{price_per_share:,.2f} 円",
-                                          help=f"株式価値 {equity_value_for_share:,.0f}百万円 ÷ {shares_calc:,.0f}株")
-                                
-                                st.write("**計算式:**")
-                                st.markdown(f"1株当たり価値 = {equity_value_for_share:,.0f}<span style='font-size: 0.8em;'>百万円</span> × 1,000,000 ÷ {shares_calc:,.0f}株 = {price_per_share:,.2f} 円", unsafe_allow_html=True)
+                                st.session_state['shares_used'] = shares_input
+                                st.rerun()
+                        
+                        # 計算済みの結果を表示
+                        if 'price_per_share' in st.session_state:
+                            price_per_share = st.session_state['price_per_share']
+                            shares_used = st.session_state['shares_used']
+                            
+                            st.metric("1株当たり価値", f"{price_per_share:,.2f} 円",
+                                      help=f"株式価値 {equity_value_for_share:,.0f}百万円 ÷ {shares_used:,.0f}株")
+                            
+                            st.write("**計算式:**")
+                            st.markdown(f"1株当たり価値 = {equity_value_for_share:,.0f}<span style='font-size: 0.8em;'>百万円</span> × 1,000,000 ÷ {shares_used:,.0f}株 = {price_per_share:,.2f} 円", unsafe_allow_html=True)
                     
                     with col_sh2:
                         pass

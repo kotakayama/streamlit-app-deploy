@@ -413,11 +413,14 @@ with right:
                     
                     standardized_bs = st.session_state.get('standardized_bs', {})
                     
+                    # 有利子負債と現金の値を先に取得
+                    debt_short = standardized_bs.get('debt_short', 0) or 0
+                    debt_long = standardized_bs.get('debt_long', 0) or 0
+                    total_debt = debt_short + debt_long
+                    cash = standardized_bs.get('cash', 0) or 0
+                    
                     col_eq1, col_eq2, col_eq3 = st.columns(3)
                     with col_eq1:
-                        debt_short = standardized_bs.get('debt_short', 0) or 0
-                        debt_long = standardized_bs.get('debt_long', 0) or 0
-                        total_debt = debt_short + debt_long
                         st.number_input("有利子負債 (円)", value=float(total_debt), 
                                         format="%.0f", key="debt_for_equity")
                         
@@ -431,7 +434,6 @@ with right:
                             st.session_state['equity_value'] = equity_value
                     
                     with col_eq2:
-                        cash = standardized_bs.get('cash', 0) or 0
                         st.number_input("現金及び現金同等物 (円)", value=float(cash), 
                                         format="%.0f", key="cash_for_equity")
                     

@@ -1,6 +1,7 @@
 import re
 import pandas as pd
 from datetime import datetime
+import numpy as np
 
 FISCAL_RE = re.compile(r"^\s*\d{1,2}[/／]\d{1,2}期\s*$")  # 例: 24/11期, 25/5期（全角スラッシュ対応）
 
@@ -107,6 +108,31 @@ def _detect_section_boundaries(df: pd.DataFrame) -> list[tuple[int, int, str]]:
     return sections
 
 
+def _parse_numeric(val) -> float:
+    """Robust numeric parser for Excel cells with commas, currency, and negative markers (△, parentheses)."""
+    if pd.isna(val):
+        return np.nan
+    s = str(val).strip()
+    if s == "" or s.lower() == "nan":
+        return np.nan
+    neg = False
+    # Japanese negative marker '△' or '▲'
+    if s.startswith("△") or s.startswith("▲"):
+        neg = True
+        s = s[1:].strip()
+    # Parentheses negative (e.g., (123))
+    if re.match(r"^\(.*\)$", s):
+        neg = True
+        s = s.strip("()")
+    # Remove common decorations
+    s = s.replace(",", "").replace("円", "").replace("¥", "").replace("%", "").replace(" ", "")
+    try:
+        v = float(s)
+        return -v if neg else v
+    except Exception:
+        return np.nan
+
+
 def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
     """
     returns:
@@ -182,7 +208,7 @@ def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
 
     wide = pd.DataFrame(index=metrics)
     for pc in period_cols:
-        col_series = pd.to_numeric(body.iloc[:, pc["col"]], errors="coerce")
+        col_series = body.iloc[:, pc["col"]].apply(_parse_numeric)
         wide[pc["period"]] = col_series.values
 
     # インデックスがNoneの行を落とす
@@ -268,7 +294,7 @@ def extract_yearly_table_by_section(xlsx_file, sheet_name: str) -> dict[str, dic
         for pc in period_cols:
             col_idx = pc["col"]
             if col_idx < body.shape[1]:
-                col_series = pd.to_numeric(body.iloc[:, col_idx], errors="coerce")
+                col_series = body.iloc[:, col_idx].apply(_parse_numeric)
                 wide[pc["period"]] = col_series.values
         
         # Clean up

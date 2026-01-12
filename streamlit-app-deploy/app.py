@@ -285,7 +285,7 @@ with right:
                     # Display results (persistent)
                     col_res1, col_res2 = st.columns(2)
                     with col_res1:
-                        st.metric("計算されたWACC", f"{wacc*100:.2f}%")
+                        st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>計算されたWACC</div><div style='font-size: 2.25rem; font-weight: 600;'>{wacc*100:.2f}<span style='font-size: 0.875rem; font-weight: 400;'>%</span></div>", unsafe_allow_html=True)
                     with col_res2:
                         st.write("")
                         st.write("")

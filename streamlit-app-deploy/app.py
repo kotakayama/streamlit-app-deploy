@@ -513,20 +513,51 @@ with right:
                             st.session_state['net_debt'] = net_debt
                             st.session_state['equity_value'] = equity_value
                             
-                            col_eq_res1, col_eq_res2, col_eq_res3 = st.columns(3)
+                            col_eq_res1, col_eq_res2 = st.columns(2)
                             with col_eq_res1:
                                 st.metric("純有利子負債", f"{net_debt:,.0f} 円")
                             with col_eq_res2:
                                 st.metric("株式価値", f"{equity_value:,.0f} 円",
                                           help="Equity Value = EV − Net Debt")
-                            with col_eq_res3:
-                                # 1株当たり価値（発行済株式数がある場合）
-                                shares = standardized_bs.get('shares_outstanding')
-                                if shares and shares > 0:
-                                    price_per_share = equity_value / shares
-                                    st.metric("1株当たり価値", f"{price_per_share:,.0f} 円",
-                                              help=f"株式価値 ÷ {shares:,.0f}株")
                             
                             st.write("**計算式:**")
                             st.write(f"純有利子負債 = {debt_input:,.0f} − {cash_input:,.0f} = {net_debt:,.0f} 円")
                             st.write(f"株式価値 = {enterprise_value:,.0f} − {net_debt:,.0f} = {equity_value:,.0f} 円")
+                
+                # 1株当たり価値計算セクション（株式価値計算後に表示）
+                if 'equity_value' in st.session_state:
+                    st.write("---")
+                    st.subheader("H) 1株当たり価値")
+                    st.write("1株当たり価値 = 株式価値 ÷ 発行済株式数")
+                    
+                    equity_value_for_share = st.session_state['equity_value']
+                    standardized_bs = st.session_state.get('standardized_bs', {})
+                    shares_default = standardized_bs.get('shares_outstanding', 0) or 0
+                    
+                    col_sh1, col_sh2 = st.columns(2)
+                    with col_sh1:
+                        st.write(f"**株式価値**: {equity_value_for_share:,.0f} 円")
+                        shares_input = st.number_input("発行済株式数 (株)", 
+                                                       value=float(shares_default), 
+                                                       format="%.0f", 
+                                                       key="shares_for_price",
+                                                       help="完全希薄化後の発行済株式数を入力してください")
+                    
+                    with col_sh2:
+                        st.write("")
+                        st.write("")
+                        if st.button("1株当たり価値計算", key="price_per_share_calc_btn"):
+                            shares_calc = st.session_state.get('shares_for_price', shares_default)
+                            
+                            if shares_calc <= 0:
+                                st.error("発行済株式数は正の値である必要があります")
+                            else:
+                                price_per_share = equity_value_for_share / shares_calc
+                                st.session_state['price_per_share'] = price_per_share
+                                st.session_state['shares_used'] = shares_calc
+                                
+                                st.metric("1株当たり価値", f"{price_per_share:,.2f} 円",
+                                          help=f"株式価値 {equity_value_for_share:,.0f}円 ÷ {shares_calc:,.0f}株")
+                                
+                                st.write("**計算式:**")
+                                st.write(f"1株当たり価値 = {equity_value_for_share:,.0f} ÷ {shares_calc:,.0f} = {price_per_share:,.2f} 円")

@@ -31,6 +31,25 @@ load_dotenv()
 st.set_page_config(page_title="Valuation App", layout="wide")
 st.title("Valuation App")
 
+# ファイルアップローダーのボタンテキストをカスタマイズ
+st.markdown("""
+<style>
+[data-testid="stFileUploader"] section > button {
+    display: none;
+}
+[data-testid="stFileUploader"] section > button::after {
+    content: "ファイルを選択する";
+    display: inline-block;
+}
+[data-testid="stFileUploader"] section > div {
+    display: block;
+}
+[data-testid="stFileUploader"] section > div::before {
+    content: "ファイルを選択する";
+}
+</style>
+""", unsafe_allow_html=True)
+
 if not os.getenv("OPENAI_API_KEY"):
     st.warning("OPENAI_API_KEY が未設定です（LLM正規化をONにするなら .env に設定してください）")
 

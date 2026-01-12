@@ -372,3 +372,57 @@ with right:
                         st.write("**内訳:**")
                         st.write(f"- 株主資本部分：(E/V)×Re = {E/V:.3f} × {Re*100:.1f}% = {(E/V)*Re*100:.2f}%")
                         st.write(f"- 負債部分：(D/V)×Rd×(1−Tc) = {D/V:.3f} × {Rd*100:.1f}% × (1−{Tc*100:.0f}%) = {(D/V)*Rd*(1-Tc)*100:.2f}%")
+                
+                # Terminal Value計算セクション（WACC計算後に表示）
+                if 'wacc_calculated' in st.session_state:
+                    st.write("---")
+                    st.subheader("F) Terminal Value計算")
+                    st.write("TV = FCF_last × (1 + g) / (WACC − g)")
+                    
+                    wacc_tv = st.session_state['wacc_calculated']
+                    fcf_plan_data = st.session_state.get('fcf_plan', pd.DataFrame())
+                    
+                    if not fcf_plan_data.empty:
+                        # Get last year FCF
+                        fcf_col = [c for c in fcf_plan_data.columns if c.upper() == 'FCF']
+                        if fcf_col:
+                            fcf_values = pd.to_numeric(fcf_plan_data[fcf_col[0]], errors='coerce')
+                            fcf_last = fcf_values.dropna().iloc[-1] if len(fcf_values.dropna()) > 0 else 0.0
+                            forecast_years = len(fcf_values.dropna())
+                        else:
+                            fcf_last = 0.0
+                            forecast_years = 0
+                    else:
+                        fcf_last = 0.0
+                        forecast_years = 0
+                    
+                    col_tv1, col_tv2 = st.columns(2)
+                    with col_tv1:
+                        st.write(f"**最終年FCF**: {fcf_last:,.0f} 円")
+                        st.write(f"**予測期間**: {forecast_years} 年")
+                        g = st.number_input("永続成長率 g (%)", value=2.0, step=0.1, key="tv_growth_rate") / 100.0
+                    
+                    with col_tv2:
+                        st.write("")
+                        st.write("")
+                        if st.button("Terminal Value計算", key="tv_calc_btn"):
+                            if wacc_tv <= g:
+                                st.error("WACC > g である必要があります（現在のWACC≤g）")
+                            elif fcf_last <= 0:
+                                st.error("最終年FCFが正の値である必要があります")
+                            else:
+                                tv = (fcf_last * (1 + g)) / (wacc_tv - g)
+                                pv_tv = tv / (1 + wacc_tv) ** forecast_years
+                                
+                                st.session_state['terminal_value'] = tv
+                                st.session_state['pv_terminal_value'] = pv_tv
+                                
+                                col_tv_res1, col_tv_res2 = st.columns(2)
+                                with col_tv_res1:
+                                    st.metric("Terminal Value", f"{tv:,.0f} 円")
+                                with col_tv_res2:
+                                    st.metric("Terminal Value (PV)", f"{pv_tv:,.0f} 円")
+                                
+                                st.write("**計算式:**")
+                                st.write(f"TV = {fcf_last:,.0f} × (1 + {g*100:.2f}%) / ({wacc_tv*100:.2f}% − {g*100:.2f}%) = {tv:,.0f} 円")
+                                st.write(f"PV(TV) = {tv:,.0f} / (1 + {wacc_tv*100:.2f}%)^{forecast_years} = {pv_tv:,.0f} 円")

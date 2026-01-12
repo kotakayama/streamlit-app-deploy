@@ -74,6 +74,39 @@ def _find_label_col(df: pd.DataFrame, header_row: int) -> int:
     return best_col
 
 
+def _detect_section_boundaries(df: pd.DataFrame) -> list[tuple[int, int, str]]:
+    """
+    Detect data sections (PL/BS/CF) in the sheet. Returns list of (start_row, end_row, section_name).
+    Heuristic: Look for rows where column B contains 損益, 貸借, キャッシュ, CF, PL, BS keywords.
+    """
+    sections = []
+    section_keywords = {
+        "損益計算書": ["損益", "PL"],
+        "貸借対照表": ["貸借", "BS", "バランスシート"],
+        "キャッシュフロー計算書": ["キャッシュ", "CF", "現金"],
+    }
+    
+    section_start_rows = {}
+    for row_idx in range(len(df)):
+        b_val = str(df.iloc[row_idx, 1]) if df.shape[1] > 1 else ""
+        for section_name, keywords in section_keywords.items():
+            if any(kw in b_val for kw in keywords):
+                section_start_rows[section_name] = row_idx
+                break
+    
+    # Sort by start row and create (start, end) pairs
+    sorted_sections = sorted(section_start_rows.items(), key=lambda x: x[1])
+    for i, (section_name, start_row) in enumerate(sorted_sections):
+        # End row is the next section's start - 1, or the end of the dataframe
+        if i + 1 < len(sorted_sections):
+            end_row = sorted_sections[i + 1][1] - 1
+        else:
+            end_row = len(df) - 1
+        sections.append((start_row, end_row, section_name))
+    
+    return sections
+
+
 def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
     """
     returns:
@@ -84,11 +117,20 @@ def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
         "label_col": int,
         "period_cols": [{"col": int, "period": str}, ...],
         "wide": DataFrame (index=metric, columns=period),
-        "long": DataFrame (sheet, metric, period, value)
+        "long": DataFrame (sheet, metric, period, value),
+        "sections": [section info] or None if single section
       }
     """
     df = pd.read_excel(xlsx_file, sheet_name=sheet_name, header=None)
 
+    # Try to detect multiple sections
+    sections = _detect_section_boundaries(df)
+    
+    # If multiple sections, process the entire dataframe as-is
+    # but note that it contains mixed content
+    if not sections:
+        sections = [(0, len(df) - 1, "Default")]
+    
     header_row = _find_header_row(df)
     if header_row is None:
         raise ValueError(f"Header row not found in sheet={sheet_name}")
@@ -169,6 +211,7 @@ def extract_yearly_table(xlsx_file, sheet_name: str) -> dict:
         "wide": wide,
         "long": long,
         "raw_preview": raw_preview,
+        "sections": sections,  # Include detected sections
     }
 
 
@@ -176,3 +219,83 @@ def list_sheet_names(xlsx_file) -> list[str]:
     # pandas でExcelFileを使うのが手軽
     xl = pd.ExcelFile(xlsx_file)
     return xl.sheet_names
+
+def extract_yearly_table_by_section(xlsx_file, sheet_name: str) -> dict[str, dict]:
+    """
+    Extract yearly table separately by section (PL, BS, CF, etc).
+    Returns dict with section names as keys, each containing the same structure as extract_yearly_table.
+    Each section may have a different label column position.
+    """
+    result = extract_yearly_table(xlsx_file, sheet_name)
+    sections = result.get("sections", [])
+    
+    if not sections:
+        # No sections detected, return as single section
+        return {"all": result}
+    
+    df = pd.read_excel(xlsx_file, sheet_name=sheet_name, header=None)
+    header_row = result["header_row"]
+    period_cols = result["period_cols"]
+    unit = result["unit"]
+    
+    section_results = {}
+    
+    for start_row, end_row, section_name in sections:
+        # For each section, extract the data
+        if start_row > end_row:
+            continue
+        
+        # All sections share the same header row
+        # Extract body for this section (skip the section header line itself)
+        body_start = start_row + 1
+        body = df.iloc[body_start : end_row + 1, :].copy()
+        if body.empty:
+            continue
+        
+        # Detect label column for this section (best column with non-empty strings)
+        label_col = _find_label_col(body, 0)  # Start from first row of body
+        
+        if label_col >= body.shape[1]:
+            continue
+        
+        # 指定科目列の文字列抽出
+        metrics_raw = body.iloc[:, label_col]
+        metrics = metrics_raw.where(metrics_raw.notna(), None).astype(object).apply(lambda x: _norm_cell(x) if x is not None else None)
+        metrics = pd.Index([m if (m is not None and m != "") else None for m in metrics])
+        
+        # Create wide dataframe for this section
+        wide = pd.DataFrame(index=metrics)
+        for pc in period_cols:
+            col_idx = pc["col"]
+            if col_idx < body.shape[1]:
+                col_series = pd.to_numeric(body.iloc[:, col_idx], errors="coerce")
+                wide[pc["period"]] = col_series.values
+        
+        # Clean up
+        wide = wide[wide.index.notna()]
+        wide = wide.dropna(how="all")
+        
+        if wide.empty:
+            continue
+        
+        # Convert to long format
+        tmp = wide.reset_index()
+        metric_col = tmp.columns[0]
+        long = tmp.melt(id_vars=[metric_col], var_name="period", value_name="value")
+        long = long.rename(columns={metric_col: "metric"}).dropna(subset=["value"])
+        long.insert(0, "sheet", sheet_name)
+        long.insert(1, "section", section_name)
+        long["unit"] = unit
+        
+        section_results[section_name] = {
+            "sheet": sheet_name,
+            "section": section_name,
+            "unit": unit,
+            "header_row": header_row,
+            "label_col": label_col,
+            "period_cols": period_cols,
+            "wide": wide,
+            "long": long,
+        }
+    
+    return section_results if section_results else {"all": result}

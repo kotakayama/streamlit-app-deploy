@@ -229,30 +229,30 @@ with right:
                 
                 # Get BS data from standardized
                 bs_data = st.session_state.get('standardized_bs', {})
-                equity_default = float(bs_data.get('total_equity') or 0.0)
-                debt_short_default = float(bs_data.get('debt_short') or 0.0)
-                debt_long_default = float(bs_data.get('debt_long') or 0.0)
+                equity_default = float(bs_data.get('total_equity') or 0.0) / 1_000_000  # 百万円に変換
+                debt_short_default = float(bs_data.get('debt_short') or 0.0) / 1_000_000
+                debt_long_default = float(bs_data.get('debt_long') or 0.0) / 1_000_000
                 total_debt_default = debt_short_default + debt_long_default
                 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.write("**自己（株主）資本コスト**")
-                    cost_of_equity = st.number_input("Re (%)", value=8.0, step=0.5, key="wacc_re")
+                    cost_of_equity = st.number_input("Re (%)", value=14.58, step=0.01, key="wacc_re")
                 with col2:
                     st.write("**有利子負債コスト**")
-                    cost_of_debt = st.number_input("Rd (%)", value=2.0, step=0.1, key="wacc_rd")
+                    cost_of_debt = st.number_input("Rd (%)", value=2.17, step=0.01, key="wacc_rd")
                 with col3:
-                    st.write("**資本構成（帳簿価額）**")
-                    book_equity = st.number_input("自己資本 E (円)", value=equity_default, min_value=0.0, key="wacc_equity", help="最新の決算書（BS）の純資産")
-                    book_debt = st.number_input("有利子負債 D (円)", value=total_debt_default, min_value=0.0, key="wacc_debt", help="短期借入金 + 長期借入金")
+                    st.write("**資本構成（帳簿価額）、単位：百万円**")
+                    book_equity = st.number_input("自己資本 E (百万円)", value=equity_default, min_value=0.0, key="wacc_equity", help="最新の決算書（BS）の純資産")
+                    book_debt = st.number_input("有利子負債 D (百万円)", value=total_debt_default, min_value=0.0, key="wacc_debt", help="短期借入金 + 長期借入金")
                 with col4:
                     st.write("**法人税率**")
                     tax_rate_wacc = st.number_input("Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
                 
                 if st.button("▶️ WACC（割引率）を計算する", key="wacc_calc_btn", type="secondary"):
-                    # Calculate WACC
-                    E = float(book_equity)
-                    D = float(book_debt)
+                    # Calculate WACC (入力は百万円単位なので円に変換)
+                    E = float(book_equity) * 1_000_000
+                    D = float(book_debt) * 1_000_000
                     V = E + D
                     Re = float(cost_of_equity) / 100.0
                     Rd = float(cost_of_debt) / 100.0

@@ -345,34 +345,59 @@ with right:
                                 help="Terminal Value計算に使用する最終年度を選択してください"
                             )
                             
-                            # 選択された年度のFCFと予測期間を計算
-                            end_index = available_periods.index(end_period)
-                            fcf_last = period_to_fcf[end_period]
-                            forecast_years = end_index - start_index + 1  # 期間の年数
+                            # 計算済みの値がある場合は表示（ボタン押下後のみ更新）
+                            if 'tv_fcf_last' in st.session_state and 'tv_forecast_years' in st.session_state:
+                                display_fcf = st.session_state['tv_fcf_last']
+                                display_years = st.session_state['tv_forecast_years']
+                                display_start = st.session_state.get('tv_display_start', start_period)
+                                display_end = st.session_state.get('tv_display_end', end_period)
+                            else:
+                                # 初期表示用（ボタン押下前）
+                                end_index = available_periods.index(end_period)
+                                display_fcf = period_to_fcf[end_period]
+                                display_years = end_index - start_index + 1
+                                display_start = start_period
+                                display_end = end_period
                             
-                            st.write(f"**最終年FCF**: {fcf_last:,.0f}")
+                            st.write(f"**最終年FCF**: {display_fcf:,.0f}")
                             st.markdown(f"<span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
-                            st.write(f"**予測期間**: {forecast_years} 年 ({start_period} 〜 {end_period})")
+                            st.write(f"**予測期間**: {display_years} 年 ({display_start} 〜 {display_end})")
                         else:
                             st.warning("FCFデータが見つかりません")
-                            fcf_last = 0.0
-                            forecast_years = 0
                         
                         g = st.number_input("永続成長率 g (%)", value=1.0, step=0.1, key="tv_growth_rate") / 100.0
                         
                         st.write("")
                         if st.button("▶️ Terminal Valueを計算する", key="tv_calc_btn", type="secondary"):
-                            if wacc_tv <= g:
-                                st.error("WACC > g である必要があります（現在のWACC≤g）")
-                            elif fcf_last <= 0:
-                                st.error("最終年FCFが正の値である必要があります")
-                            else:
-                                tv = (fcf_last * (1 + g)) / (wacc_tv - g)
-                                pv_tv = tv / (1 + wacc_tv) ** forecast_years
+                            # ボタン押下時に現在の選択値で計算
+                            selected_start = st.session_state.get('tv_start_period')
+                            selected_end = st.session_state.get('tv_end_period')
+                            selected_g = st.session_state.get('tv_growth_rate', 1.0) / 100.0
+                            
+                            if available_periods:
+                                start_idx = available_periods.index(selected_start)
+                                end_idx = available_periods.index(selected_end)
+                                fcf_last = period_to_fcf[selected_end]
+                                forecast_years = end_idx - start_idx + 1
                                 
-                                st.session_state['terminal_value'] = tv
-                                st.session_state['pv_terminal_value'] = pv_tv
-                                st.session_state['forecast_years'] = forecast_years
+                                # 表示用の値を保存
+                                st.session_state['tv_fcf_last'] = fcf_last
+                                st.session_state['tv_forecast_years'] = forecast_years
+                                st.session_state['tv_display_start'] = selected_start
+                                st.session_state['tv_display_end'] = selected_end
+                                
+                                if wacc_tv <= selected_g:
+                                    st.error("WACC > g である必要があります（現在のWACC≤g）")
+                                elif fcf_last <= 0:
+                                    st.error("最終年FCFが正の値である必要があります")
+                                else:
+                                    tv = (fcf_last * (1 + selected_g)) / (wacc_tv - selected_g)
+                                    pv_tv = tv / (1 + wacc_tv) ** forecast_years
+                                    
+                                    st.session_state['terminal_value'] = tv
+                                    st.session_state['pv_terminal_value'] = pv_tv
+                                    st.session_state['forecast_years'] = forecast_years
+                                    st.session_state['tv_g_used'] = selected_g
                     
                     with col_tv2:
                         pass
@@ -380,14 +405,18 @@ with right:
                 if 'pv_terminal_value' in st.session_state and 'terminal_value' in st.session_state:
                     tv = st.session_state['terminal_value']
                     pv_tv = st.session_state['pv_terminal_value']
+                    fcf_last_display = st.session_state.get('tv_fcf_last', 0)
+                    forecast_years_display = st.session_state.get('tv_forecast_years', 0)
+                    g_used = st.session_state.get('tv_g_used', 0)
+                    
                     col_tv_res1, col_tv_res2 = st.columns(2)
                     with col_tv_res1:
                         st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>Terminal Value</div><div style='font-size: 2.25rem; font-weight: 600;'>{tv:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     with col_tv_res2:
                         st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>Terminal Value (PV)</div><div style='font-size: 2.25rem; font-weight: 600;'>{pv_tv:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>百万円</span></div>", unsafe_allow_html=True)
                     st.write("**計算式:**")
-                    st.markdown(f"TV = {fcf_last:,.0f} × (1 + {g*100:.2f}%) / ({wacc_tv*100:.2f}% − {g*100:.2f}%) = {tv:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
-                    st.markdown(f"PV(TV) = {tv:,.0f} / (1 + {wacc_tv*100:.2f}%)^{forecast_years} = {pv_tv:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
+                    st.markdown(f"TV = {fcf_last_display:,.0f} × (1 + {g_used*100:.2f}%) / ({wacc_tv*100:.2f}% − {g_used*100:.2f}%) = {tv:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
+                    st.markdown(f"PV(TV) = {tv:,.0f} / (1 + {wacc_tv*100:.2f}%)^{forecast_years_display} = {pv_tv:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
                 
                 # 事業価値・株式価値セクション（Terminal Value計算後に表示）
                 if 'pv_terminal_value' in st.session_state and 'wacc_calculated' in st.session_state:

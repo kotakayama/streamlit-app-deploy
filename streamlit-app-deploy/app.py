@@ -289,15 +289,20 @@ with right:
             st.subheader("F) WACC計算")
             st.write("WACC = (E/V)×Re + (D/V)×Rd×(1−Tc)")
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
+                st.write("**自己（株主）資本コスト**")
+                cost_of_equity = st.number_input("Re (%)", value=8.0, step=0.5, key="wacc_re")
+            with col2:
+                st.write("**有利子負債コスト**")
+                cost_of_debt = st.number_input("Rd (%)", value=2.0, step=0.1, key="wacc_rd")
+            with col3:
+                st.write("**資本構成**")
                 market_cap_wacc = st.number_input("時価総額 E (円)", value=0.0, min_value=0.0, key="wacc_mcap")
                 net_debt_wacc = st.number_input("ネット・デット D (円)", value=0.0, key="wacc_debt")
-            with col2:
-                cost_of_equity = st.number_input("株主資本コスト Re (%)", value=8.0, step=0.5, key="wacc_re")
-                cost_of_debt = st.number_input("負債コスト Rd (%)", value=2.0, step=0.1, key="wacc_rd")
-            with col3:
-                tax_rate_wacc = st.number_input("法人税率 Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
+            with col4:
+                st.write("**法人税率**")
+                tax_rate_wacc = st.number_input("Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
             
             if st.button("WACC計算", key="wacc_calc_btn"):
                 # Calculate WACC

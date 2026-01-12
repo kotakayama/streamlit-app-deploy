@@ -50,7 +50,7 @@ with left:
             sheets = list_sheet_names(plan_file)
             sheet_options = ["シートが選択されていません"] + sheets
             sheet_choice = st.selectbox("将来の売上・費用計画が記載されたシートを選択してください", sheet_options)
-            if sheet_choice != "シートが選択されていません" and st.button("▶️ 事業計画からキャッシュフローを生成", key="extract_plan", type="primary"):
+            if sheet_choice != "シートが選択されていません" and st.button("▶️ 事業計画からキャッシュフローを生成", key="extract_plan", type="secondary"):
                 try:
                     plan_results = extract_yearly_table(plan_file, sheet_choice)
                     st.session_state['plan_extract'] = plan_results

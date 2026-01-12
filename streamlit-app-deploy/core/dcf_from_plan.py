@@ -443,20 +443,21 @@ def _find_series_simple(long_df: pd.DataFrame, synonyms: list[str]) -> pd.Series
     df = long_df.copy()
     if "metric" not in df.columns:
         return pd.Series(dtype=float)
-    df["metric_low"] = df["metric"].astype(str).str.lower()
-    syn_low = [s.lower() for s in synonyms]
-    mask = df["metric_low"].apply(lambda m: any(s in m for s in syn_low))
+    # Normalize: remove spaces, parentheses, special chars
+    df["metric_norm"] = df["metric"].astype(str).str.replace(r"[\s\(\)（）]", "", regex=True).str.lower()
+    syn_norm = [s.replace(" ", "").replace("(", "").replace(")", "").lower() for s in synonyms]
+    mask = df["metric_norm"].apply(lambda m: any(s in m for s in syn_norm))
     cand = df[mask]
     if cand.empty:
-        # fuzzy
-        uniq = df["metric_low"].unique().tolist()
+        # fuzzy matching
+        uniq = df["metric_norm"].unique().tolist()
         hits = set()
-        for syn in syn_low:
-            for c in difflib.get_close_matches(syn, uniq, n=5, cutoff=0.7):
+        for syn in syn_norm:
+            for c in difflib.get_close_matches(syn, uniq, n=5, cutoff=0.65):
                 hits.add(c)
         if not hits:
             return pd.Series(dtype=float)
-        cand = df[df["metric_low"].isin(list(hits))]
+        cand = df[df["metric_norm"].isin(list(hits))]
     s = cand.groupby("period")["value"].sum().sort_index()
     return s
 
@@ -566,10 +567,21 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
         cf_long = cf.get("long") if cf else pd.DataFrame(columns=["metric", "period", "value"])
 
         # NOPAT: 直接NOPATがあればそれを使用。無ければ EBIT*(1-税率)
-        nopat_s = _find_series_simple(pl_long, ["税引後営業利益", "NOPAT"]).reindex(idx)
+        nopat_s = _find_series_simple(pl_long, ["税引後営業利益", "NOPAT", "nopat"]).reindex(idx)
         if nopat_s.isna().all():
-            ebit_s = _find_series_simple(pl_long, ["営業利益", "営業損益", "EBIT", "operating income"]).reindex(idx)
-            nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
+            ebit_s = _find_series_simple(pl_long, ["営業利益", "営業損益", "営業", "EBIT", "operating income", "operating profit"]).reindex(idx)
+            if not ebit_s.isna().all():
+                nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
+            else:
+                # Fallback: try to find from available metrics, prefer highest positive value
+                if not pl_long.empty:
+                    agg = pl_long.groupby("metric")["value"].agg(lambda x: x.dropna().abs().sum())
+                    if not agg.empty:
+                        top_metric = agg.idxmax()
+                        ebit_s = pl_long[pl_long["metric"] == top_metric].groupby("period")["value"].sum().reindex(idx)
+                        if not ebit_s.isna().all():
+                            nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
+                            print(f"DEBUG: Using metric '{top_metric}' as EBIT fallback")
 
         # 減価償却（PL優先、無ければCFから）
         deprec_s = _find_series_simple(pl_long, ["減価償却", "減価償却費", "償却費"]).reindex(idx)

@@ -530,19 +530,81 @@ def build_fcf_from_nopat_long(plan_long: pd.DataFrame, periods: list[str], tax_r
 
 def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, forecast_years: int | None = None) -> pd.DataFrame:
     """
-    FS_年次などのワークブックから、DCF理論型（NOPATベース）のFCF計画を抽出。
-    返す列: [period, NOPAT, 減価償却, CAPEX, Δ運転資本, FCF]
+    FS_年次の複数セクション（PL/BS/CF）を用いて、DCF理論型（NOPATベース）のFCF計画を抽出。
+    - 年次periodはFS_年次のヘッダ（◯◯/◯◯期や日付列）を採用
+    - 返す列: [period, NOPAT, 減価償却, CAPEX, Δ運転資本, FCF]
     """
     try:
-        tidy = extract_cf_tidy_from_workbook(xlsx_file)
-        if tidy.empty:
+        # セクション別抽出（FS_年次）
+        from .ingest_plan_excel import extract_yearly_table_by_section
+        sections = extract_yearly_table_by_section(xlsx_file, "FS_年次")
+
+        pl = sections.get("損益計算書")
+        bs = sections.get("貸借対照表")
+        cf = sections.get("キャッシュフロー計算書")
+
+        # 年次periodの決定（PL優先→CF→BS）
+        def _periods_from(section: dict | None) -> list[str]:
+            if not section:
+                return []
+            pcs = section.get("period_cols", [])
+            if pcs:
+                return [str(p.get("period")) for p in pcs]
+            long = section.get("long")
+            if isinstance(long, pd.DataFrame) and not long.empty:
+                return sorted(long["period"].astype(str).unique().tolist())
+            return []
+
+        periods = _periods_from(pl) or _periods_from(cf) or _periods_from(bs)
+        periods = [str(p) for p in periods]
+        if not periods:
             return pd.DataFrame(columns=["period", "NOPAT", "減価償却", "CAPEX", "Δ運転資本", "FCF"])
-        # 利用する期間（昇順）
-        periods = sorted(tidy["period"].dropna().astype(str).unique().tolist())
-        fcf_df = build_fcf_from_nopat_long(tidy[["metric", "period", "value"]], periods, tax_rate=tax_rate)
+        idx = pd.Index(periods)
+
+        pl_long = pl.get("long") if pl else pd.DataFrame(columns=["metric", "period", "value"])
+        bs_long = bs.get("long") if bs else pd.DataFrame(columns=["metric", "period", "value"])
+        cf_long = cf.get("long") if cf else pd.DataFrame(columns=["metric", "period", "value"])
+
+        # NOPAT: 直接NOPATがあればそれを使用。無ければ EBIT*(1-税率)
+        nopat_s = _find_series_simple(pl_long, ["税引後営業利益", "NOPAT"]).reindex(idx)
+        if nopat_s.isna().all():
+            ebit_s = _find_series_simple(pl_long, ["営業利益", "EBIT"]).reindex(idx)
+            nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
+
+        # 減価償却
+        deprec_s = _find_series_simple(pl_long, ["減価償却", "減価償却費"]).reindex(idx)
+
+        # CAPEX（投資CF詳細から抽出）。キャッシュアウトは正値に反転
+        capex_candidates = [
+            "設備投資", "CAPEX", "有形固定資産の取得", "無形固定資産の取得", "固定資産の取得",
+            "機械装置の取得", "建物の取得", "ソフトウェアの取得"
+        ]
+        capex_s = _find_series_simple(cf_long, capex_candidates).reindex(idx)
+        if not capex_s.isna().all():
+            capex_s = capex_s.apply(lambda v: abs(float(v)) if pd.notna(v) else np.nan)
+
+        # Δ運転資本 = Δ(売上債権 + 棚卸資産 − 仕入債務)
+        ar_s = _find_series_simple(bs_long, ["売上債権", "売掛金", "受取手形及び売掛金", "Trade receivables", "Accounts receivable"]).reindex(idx)
+        inv_s = _find_series_simple(bs_long, ["棚卸資産", "商品", "製品", "原材料", "仕掛品", "Inventories"]).reindex(idx)
+        ap_s = _find_series_simple(bs_long, ["仕入債務", "買掛金", "支払手形及び買掛金", "Trade payables", "Accounts payable"]).reindex(idx)
+        if not (ar_s.isna().all() and inv_s.isna().all() and ap_s.isna().all()):
+            nwc = ar_s.fillna(0.0).astype(float) + inv_s.fillna(0.0).astype(float) - ap_s.fillna(0.0).astype(float)
+            d_nwc = nwc.diff().fillna(0.0)
+        else:
+            d_nwc = pd.Series(index=idx, dtype=float)
+
+        out = pd.DataFrame({
+            "period": idx,
+            "NOPAT": pd.to_numeric(nopat_s, errors="coerce").values,
+            "減価償却": pd.to_numeric(deprec_s, errors="coerce").values,
+            "CAPEX": pd.to_numeric(capex_s, errors="coerce").values,
+            "Δ運転資本": pd.to_numeric(d_nwc, errors="coerce").values,
+        })
+        out["FCF"] = out["NOPAT"].fillna(0.0) + out["減価償却"].fillna(0.0) - out["CAPEX"].fillna(0.0) - out["Δ運転資本"].fillna(0.0)
+
         if forecast_years and forecast_years > 0:
-            fcf_df = fcf_df.tail(forecast_years).reset_index(drop=True)
-        return fcf_df
+            out = out.tail(forecast_years).reset_index(drop=True)
+        return out
     except Exception as e:
         print(f"Warning: extract_future_fcf_plan_nopat failed: {e}")
         return pd.DataFrame(columns=["period", "NOPAT", "減価償却", "CAPEX", "Δ運転資本", "FCF"])

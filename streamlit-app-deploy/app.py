@@ -416,7 +416,7 @@ with right:
                     with col_eq3:
                         st.write("")
                         st.write("")
-                        if st.button("株式価値計算", key="equity_value_calc_btn"):
+                        if st.button("▶️ 株式価値計算", key="equity_value_calc_btn", type="secondary"):
                             debt_input = st.session_state.get('debt_for_equity', total_debt)
                             cash_input = st.session_state.get('cash_for_equity', cash)
                             net_debt = debt_input - cash_input
@@ -443,7 +443,7 @@ with right:
                 # 1株当たり価値計算セクション（株式価値計算後に表示）
                 if 'equity_value' in st.session_state:
                     st.write("---")
-                    st.subheader("H) 1株当たり価値")
+                    st.markdown("<h3>⑤ Implied Share Price <span style='font-size: 0.7em;'>（理論株価）</span></h3>", unsafe_allow_html=True)
                     st.write("1株当たり価値 = 株式価値 ÷ 発行済株式数")
                     
                     equity_value_for_share = st.session_state['equity_value']

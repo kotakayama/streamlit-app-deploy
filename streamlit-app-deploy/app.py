@@ -311,10 +311,7 @@ with right:
                         st.write(f"**最終年FCF**: {fcf_last:,.0f} 円")
                         st.write(f"**予測期間**: {forecast_years} 年")
                         g = st.number_input("永続成長率 g (%)", value=2.0, step=0.1, key="tv_growth_rate") / 100.0
-                    
-                    with col_tv2:
-                        st.write("")
-                        st.write("")
+                        
                         if st.button("▶️ Terminal Valueを計算する", key="tv_calc_btn", type="secondary"):
                             if wacc_tv <= g:
                                 st.error("WACC > g である必要があります（現在のWACC≤g）")
@@ -326,6 +323,9 @@ with right:
                                 
                                 st.session_state['terminal_value'] = tv
                                 st.session_state['pv_terminal_value'] = pv_tv
+                    
+                    with col_tv2:
+                        pass
                 
                 if 'pv_terminal_value' in st.session_state and 'terminal_value' in st.session_state:
                     tv = st.session_state['terminal_value']
@@ -407,15 +407,7 @@ with right:
                         total_debt = debt_short + debt_long
                         st.number_input("有利子負債 (円)", value=float(total_debt), 
                                         format="%.0f", key="debt_for_equity")
-                    
-                    with col_eq2:
-                        cash = standardized_bs.get('cash', 0) or 0
-                        st.number_input("現金及び現金同等物 (円)", value=float(cash), 
-                                        format="%.0f", key="cash_for_equity")
-                    
-                    with col_eq3:
-                        st.write("")
-                        st.write("")
+                        
                         if st.button("▶️ 株式価値を計算する", key="equity_value_calc_btn", type="secondary"):
                             debt_input = st.session_state.get('debt_for_equity', total_debt)
                             cash_input = st.session_state.get('cash_for_equity', cash)
@@ -424,6 +416,14 @@ with right:
                             
                             st.session_state['net_debt'] = net_debt
                             st.session_state['equity_value'] = equity_value
+                    
+                    with col_eq2:
+                        cash = standardized_bs.get('cash', 0) or 0
+                        st.number_input("現金及び現金同等物 (円)", value=float(cash), 
+                                        format="%.0f", key="cash_for_equity")
+                    
+                    with col_eq3:
+                        pass
                 
                 if 'equity_value' in st.session_state and 'net_debt' in st.session_state:
                     net_debt = st.session_state['net_debt']
@@ -458,10 +458,7 @@ with right:
                                                        format="%.0f", 
                                                        key="shares_for_price",
                                                        help="完全希薄化後の発行済株式数を入力してください")
-                    
-                    with col_sh2:
-                        st.write("")
-                        st.write("")
+                        
                         if st.button("▶️ 理論株価を計算する", key="price_per_share_calc_btn", type="secondary"):
                             shares_calc = st.session_state.get('shares_for_price', shares_default)
                             
@@ -477,3 +474,6 @@ with right:
                                 
                                 st.write("**計算式:**")
                                 st.write(f"1株当たり価値 = {equity_value_for_share:,.0f} ÷ {shares_calc:,.0f} = {price_per_share:,.2f} 円")
+                    
+                    with col_sh2:
+                        pass

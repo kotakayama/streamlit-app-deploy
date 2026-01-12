@@ -325,6 +325,7 @@ with right:
                         st.write(f"**予測期間**: {forecast_years} 年")
                         g = st.number_input("永続成長率 g (%)", value=2.0, step=0.1, key="tv_growth_rate") / 100.0
                         
+                        st.write("")
                         if st.button("▶️ Terminal Valueを計算する", key="tv_calc_btn", type="secondary"):
                             if wacc_tv <= g:
                                 st.error("WACC > g である必要があります（現在のWACC≤g）")
@@ -424,6 +425,7 @@ with right:
                         st.number_input("有利子負債 (円)", value=float(total_debt), 
                                         format="%.0f", key="debt_for_equity")
                         
+                        st.write("")
                         if st.button("▶️ 株式価値を計算する", key="equity_value_calc_btn", type="secondary"):
                             debt_input = st.session_state.get('debt_for_equity', total_debt)
                             cash_input = st.session_state.get('cash_for_equity', cash)
@@ -474,6 +476,7 @@ with right:
                                                        key="shares_for_price",
                                                        help="完全希薄化後の発行済株式数を入力してください")
                         
+                        st.write("")
                         if st.button("▶️ 理論株価を計算する", key="price_per_share_calc_btn", type="secondary"):
                             shares_calc = st.session_state.get('shares_for_price', shares_default)
                             

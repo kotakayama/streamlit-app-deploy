@@ -37,7 +37,7 @@ if not os.getenv("OPENAI_API_KEY"):
 left, right = st.columns([1, 2])
 
 with left:
-    st.header("Financial Inputs（決算・事業計画）")
+    st.markdown("<h2>Financial Inputs <span style='font-size: 0.75em;'>（決算・事業計画）</span></h2>", unsafe_allow_html=True)
     pdf_file = st.file_uploader("決算書PDF", type=["pdf"])
     
     # Store PDF file in session for later use
@@ -97,7 +97,7 @@ with left:
             st.error(f"Excel読み込みエラー: {e}")
 
 with right:
-    st.header("Valuation Summary（株価算定結果）")
+    st.markdown("<h2>Valuation Summary <span style='font-size: 0.75em;'>（株価算定結果）</span></h2>", unsafe_allow_html=True)
 
     if pdf_file:
 

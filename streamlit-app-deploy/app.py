@@ -192,23 +192,6 @@ with right:
         evlog.add("net_debt", base["net_debt"], source_type="calc", calc_formula="debt_total - cash", unit="JPY")
 
         table = compute_valuation_table("Target", base, include_lease=True)
-        ev_df = evlog.to_df()
-
-        # Export
-        standardized_export = pd.DataFrame(standardized.items(), columns=["field", "value"])
-        sheets = {
-            "valuation": table,
-            "standardized": standardized_export,
-            "evidence": ev_df,
-        }
-        if 'plan_extract' in st.session_state:
-            plan = st.session_state['plan_extract']
-            sheets["plan_wide"] = plan['wide']
-            sheets["plan_long"] = plan['long']
-
-        xlsx = to_excel_bytes(sheets)
-        st.download_button("Download Excel", data=xlsx, file_name="valuation_output.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        st.download_button("Download Evidence JSON", data=json.dumps(evlog.to_dict(), ensure_ascii=False, indent=2), file_name="evidence.json", mime="application/json")
 
     # Plan preview (アップロード済みの事業計画を表示)
     if 'plan_extract' in st.session_state:

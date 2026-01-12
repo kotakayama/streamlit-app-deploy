@@ -376,8 +376,7 @@ with right:
                                 display_start = start_period
                                 display_end = end_period
                             
-                            st.write(f"**最終年FCF**: {display_fcf:,.0f}")
-                            st.markdown(f"<span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
+                            st.markdown(f"**最終年FCF**: {display_fcf:,.0f} <span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
                             st.write(f"**予測期間**: {display_years} 年 ({display_start} 〜 {display_end})")
                             
                             # フォーム送信時の処理

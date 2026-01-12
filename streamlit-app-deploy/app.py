@@ -236,7 +236,7 @@ with right:
                     st.write("**法人税率**")
                     tax_rate_wacc = st.number_input("Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
                 
-                if st.button("WACC計算", key="wacc_calc_btn"):
+                if st.button("▶️ WACC計算", key="wacc_calc_btn", type="secondary"):
                     # Calculate WACC
                     E = float(book_equity)
                     D = float(book_debt)
@@ -286,7 +286,7 @@ with right:
                 # Terminal Value計算セクション（WACC計算後に表示）
                 if 'wacc_calculated' in st.session_state:
                     st.write("---")
-                    st.subheader("F) Terminal Value計算")
+                    st.markdown("<h3>③ Calculate Terminal Value <span style='font-size: 0.7em;'>（残存価値の算出）</span></h3>", unsafe_allow_html=True)
                     st.write("TV = FCF_last × (1 + g) / (WACC − g)")
                     
                     wacc_tv = st.session_state['wacc_calculated']
@@ -315,7 +315,7 @@ with right:
                     with col_tv2:
                         st.write("")
                         st.write("")
-                        if st.button("Terminal Value計算", key="tv_calc_btn"):
+                        if st.button("▶️ Terminal Value計算", key="tv_calc_btn", type="secondary"):
                             if wacc_tv <= g:
                                 st.error("WACC > g である必要があります（現在のWACC≤g）")
                             elif fcf_last <= 0:
@@ -342,7 +342,7 @@ with right:
                 # 事業価値・株式価値セクション（Terminal Value計算後に表示）
                 if 'pv_terminal_value' in st.session_state and 'wacc_calculated' in st.session_state:
                     st.write("---")
-                    st.subheader("G) 事業価値・株式価値")
+                    st.markdown("<h3>④ Calculate Enterprise & Equity Value <span style='font-size: 0.7em;'>（事業価値・株主価値の算出）</span></h3>", unsafe_allow_html=True)
                     
                     fcf_plan_data = st.session_state.get('fcf_plan', pd.DataFrame())
                     wacc_ev = st.session_state['wacc_calculated']

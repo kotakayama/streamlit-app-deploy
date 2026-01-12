@@ -462,7 +462,7 @@ with right:
                     with col_sh2:
                         st.write("")
                         st.write("")
-                        if st.button("1株当たり価値計算", key="price_per_share_calc_btn"):
+                        if st.button("▶️ 理論株価を算出する", key="price_per_share_calc_btn", type="secondary"):
                             shares_calc = st.session_state.get('shares_for_price', shares_default)
                             
                             if shares_calc <= 0:

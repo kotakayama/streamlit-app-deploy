@@ -95,18 +95,6 @@ with left:
         except Exception as e:
             st.error(f"Excel読み込みエラー: {e}")
 
-    st.header("2) Company & assumptions")
-    company = st.text_input("対象企業名", "")
-    include_lease = st.checkbox("EVにリース債務を含める", value=True)
-
-    st.header("3) External (v1: 手動入力)")
-    market_cap_manual = st.number_input("時価総額（円）", value=0.0, help="未入力なら price×shares でも可")
-    price = st.number_input("株価（任意）", value=0.0)
-    shares_override = st.number_input("発行株式数（上書き・任意）", value=0.0)
-
-    st.header("4) Evidence URLs")
-    urls = st.text_area("参照URL（1行1つ）", "")
-
     run = st.button("Run")
 
 with right:
@@ -118,9 +106,6 @@ with right:
             st.stop()
 
         evlog = EvidenceLog()
-        url_list = [u.strip() for u in urls.splitlines() if u.strip()]
-        for u in url_list:
-            evlog.add_url(u)
 
         # もし事業計画がセッションにあれば、根拠ログに追加
         if 'plan_extract' in st.session_state:
@@ -214,19 +199,9 @@ with right:
         std_df = pd.DataFrame([{"field": k, "label": DISPLAY_LABELS.get(k, k), "value": v} for k, v in standardized.items()])
         st.dataframe(std_df["label value"].tolist() if False else std_df[["label", "value"]].rename(columns={"label": "項目", "value": "値"}), use_container_width=True)
 
-        # 時価総額の決定：手入力優先 → 価格×株式数（株式数はPDF or 上書き）
-        shares_for_mcap = shares_override if shares_override > 0 else (standardized.get("shares_total") or 0)
+        # 時価総額の決定
         mcap = None
-        if market_cap_manual and market_cap_manual > 0:
-            mcap = float(market_cap_manual)
-            evlog.add("market_cap", mcap, source_type="manual", notes="manual input")
-        elif price > 0 and shares_for_mcap > 0:
-            mcap = float(price) * float(shares_for_mcap)
-            evlog.add("price", float(price), source_type="manual")
-            evlog.add("shares_for_mcap", float(shares_for_mcap), source_type="calc", calc_formula="override_or_pdf_shares")
-            evlog.add("market_cap", mcap, source_type="calc", calc_formula="price * shares_for_mcap")
-        else:
-            evlog.add("market_cap", None, source_type="manual", notes="not provided")
+        evlog.add("market_cap", None, source_type="manual", notes="not provided")
 
         # Store standardized data for WACC calculation
         st.session_state['standardized_bs'] = standardized

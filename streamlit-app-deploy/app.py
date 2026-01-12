@@ -324,26 +324,43 @@ with right:
                     col_tv1, col_tv2 = st.columns(2)
                     with col_tv1:
                         if available_periods:
-                            # 開始年度選択ドロップダウン
-                            start_period = st.selectbox(
-                                "開始年度を選択",
-                                options=available_periods,
-                                index=0,  # デフォルトは最初の年度
-                                key="tv_start_period",
-                                help="予測期間の開始年度を選択してください"
-                            )
-                            
-                            # 最終年度選択ドロップダウン（開始年度以降のみ）
-                            start_index = available_periods.index(start_period)
-                            end_period_options = available_periods[start_index:]
-                            
-                            end_period = st.selectbox(
-                                "最終年度を選択",
-                                options=end_period_options,
-                                index=len(end_period_options) - 1,  # デフォルトは最後の年度
-                                key="tv_end_period",
-                                help="Terminal Value計算に使用する最終年度を選択してください"
-                            )
+                            # フォームを使用して、値の変更時の自動再実行を防止
+                            with st.form(key="tv_calculation_form"):
+                                # 開始年度選択ドロップダウン
+                                # デフォルト値を設定（保存された値があればそれを使用）
+                                default_start_idx = 0
+                                if 'tv_display_start' in st.session_state and st.session_state['tv_display_start'] in available_periods:
+                                    default_start_idx = available_periods.index(st.session_state['tv_display_start'])
+                                
+                                start_period = st.selectbox(
+                                    "開始年度を選択",
+                                    options=available_periods,
+                                    index=default_start_idx,
+                                    help="予測期間の開始年度を選択してください"
+                                )
+                                
+                                # 最終年度選択ドロップダウン（開始年度以降のみ）
+                                start_index = available_periods.index(start_period)
+                                end_period_options = available_periods[start_index:]
+                                
+                                # デフォルト値を設定（保存された値があればそれを使用）
+                                default_end_idx = len(end_period_options) - 1
+                                if 'tv_display_end' in st.session_state and st.session_state['tv_display_end'] in end_period_options:
+                                    default_end_idx = end_period_options.index(st.session_state['tv_display_end'])
+                                
+                                end_period = st.selectbox(
+                                    "最終年度を選択",
+                                    options=end_period_options,
+                                    index=default_end_idx,
+                                    help="Terminal Value計算に使用する最終年度を選択してください"
+                                )
+                                
+                                # デフォルト成長率を設定
+                                default_g = st.session_state.get('tv_g_used', 0.01) * 100 if 'tv_g_used' in st.session_state else 1.0
+                                g_input = st.number_input("永続成長率 g (%)", value=default_g, step=0.1)
+                                
+                                st.write("")
+                                submit_button = st.form_submit_button("▶️ Terminal Valueを計算する", type="secondary")
                             
                             # 計算済みの値がある場合は表示（ボタン押下後のみ更新）
                             if 'tv_fcf_last' in st.session_state and 'tv_forecast_years' in st.session_state:
@@ -362,42 +379,36 @@ with right:
                             st.write(f"**最終年FCF**: {display_fcf:,.0f}")
                             st.markdown(f"<span style='font-size: 0.8em;'>百万円</span>", unsafe_allow_html=True)
                             st.write(f"**予測期間**: {display_years} 年 ({display_start} 〜 {display_end})")
-                        else:
-                            st.warning("FCFデータが見つかりません")
-                        
-                        g = st.number_input("永続成長率 g (%)", value=1.0, step=0.1, key="tv_growth_rate") / 100.0
-                        
-                        st.write("")
-                        if st.button("▶️ Terminal Valueを計算する", key="tv_calc_btn", type="secondary"):
-                            # ボタン押下時に現在の選択値で計算
-                            selected_start = st.session_state.get('tv_start_period')
-                            selected_end = st.session_state.get('tv_end_period')
-                            selected_g = st.session_state.get('tv_growth_rate', 1.0) / 100.0
                             
-                            if available_periods:
-                                start_idx = available_periods.index(selected_start)
-                                end_idx = available_periods.index(selected_end)
-                                fcf_last = period_to_fcf[selected_end]
+                            # フォーム送信時の処理
+                            if submit_button:
+                                g = g_input / 100.0
+                                start_idx = available_periods.index(start_period)
+                                end_idx = available_periods.index(end_period)
+                                fcf_last = period_to_fcf[end_period]
                                 forecast_years = end_idx - start_idx + 1
                                 
                                 # 表示用の値を保存
                                 st.session_state['tv_fcf_last'] = fcf_last
                                 st.session_state['tv_forecast_years'] = forecast_years
-                                st.session_state['tv_display_start'] = selected_start
-                                st.session_state['tv_display_end'] = selected_end
+                                st.session_state['tv_display_start'] = start_period
+                                st.session_state['tv_display_end'] = end_period
                                 
-                                if wacc_tv <= selected_g:
+                                if wacc_tv <= g:
                                     st.error("WACC > g である必要があります（現在のWACC≤g）")
                                 elif fcf_last <= 0:
                                     st.error("最終年FCFが正の値である必要があります")
                                 else:
-                                    tv = (fcf_last * (1 + selected_g)) / (wacc_tv - selected_g)
+                                    tv = (fcf_last * (1 + g)) / (wacc_tv - g)
                                     pv_tv = tv / (1 + wacc_tv) ** forecast_years
                                     
                                     st.session_state['terminal_value'] = tv
                                     st.session_state['pv_terminal_value'] = pv_tv
                                     st.session_state['forecast_years'] = forecast_years
-                                    st.session_state['tv_g_used'] = selected_g
+                                    st.session_state['tv_g_used'] = g
+                                    st.rerun()
+                        else:
+                            st.warning("FCFデータが見つかりません")
                     
                     with col_tv2:
                         pass

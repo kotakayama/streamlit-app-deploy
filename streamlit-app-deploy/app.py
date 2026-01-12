@@ -426,3 +426,107 @@ with right:
                                 st.write("**計算式:**")
                                 st.write(f"TV = {fcf_last:,.0f} × (1 + {g*100:.2f}%) / ({wacc_tv*100:.2f}% − {g*100:.2f}%) = {tv:,.0f} 円")
                                 st.write(f"PV(TV) = {tv:,.0f} / (1 + {wacc_tv*100:.2f}%)^{forecast_years} = {pv_tv:,.0f} 円")
+                
+                # 事業価値・株式価値セクション（Terminal Value計算後に表示）
+                if 'pv_terminal_value' in st.session_state and 'wacc_calculated' in st.session_state:
+                    st.write("---")
+                    st.subheader("G) 事業価値・株式価値")
+                    
+                    fcf_plan_data = st.session_state.get('fcf_plan', pd.DataFrame())
+                    wacc_ev = st.session_state['wacc_calculated']
+                    pv_tv = st.session_state['pv_terminal_value']
+                    
+                    # FCF予測期間のPV計算
+                    if not fcf_plan_data.empty:
+                        fcf_col = [c for c in fcf_plan_data.columns if c.upper() == 'FCF']
+                        if fcf_col:
+                            fcf_values = pd.to_numeric(fcf_plan_data[fcf_col[0]], errors='coerce').dropna()
+                            
+                            # Mid-year convention: 各年のPV計算
+                            pv_fcf_list = []
+                            for i, fcf in enumerate(fcf_values, start=1):
+                                pv = fcf / ((1 + wacc_ev) ** (i - 0.5))  # Mid-year convention
+                                pv_fcf_list.append(pv)
+                            
+                            pv_fcf_sum = sum(pv_fcf_list)
+                        else:
+                            pv_fcf_sum = 0.0
+                            pv_fcf_list = []
+                    else:
+                        pv_fcf_sum = 0.0
+                        pv_fcf_list = []
+                    
+                    # 事業価値 = PV(FCF予測) + PV(TV)
+                    enterprise_value = pv_fcf_sum + pv_tv
+                    
+                    col_ev1, col_ev2, col_ev3 = st.columns(3)
+                    with col_ev1:
+                        st.metric("PV(FCF予測期間)", f"{pv_fcf_sum:,.0f} 円")
+                    with col_ev2:
+                        st.metric("PV(Terminal Value)", f"{pv_tv:,.0f} 円")
+                    with col_ev3:
+                        st.metric("事業価値 (EV)", f"{enterprise_value:,.0f} 円", 
+                                  help="Enterprise Value = PV(FCF予測) + PV(TV)")
+                    
+                    st.write("**FCF予測期間の内訳（mid-year convention）:**")
+                    if pv_fcf_list:
+                        fcf_detail_data = []
+                        fcf_values_display = pd.to_numeric(fcf_plan_data[fcf_col[0]], errors='coerce').dropna()
+                        for i, (fcf, pv) in enumerate(zip(fcf_values_display, pv_fcf_list), start=1):
+                            fcf_detail_data.append({
+                                "年": f"Year {i}",
+                                "FCF": f"{fcf:,.0f}",
+                                "PV": f"{pv:,.0f}"
+                            })
+                        st.dataframe(pd.DataFrame(fcf_detail_data), use_container_width=True)
+                    
+                    # 株式価値計算（有利子負債を除く）
+                    st.write("---")
+                    st.write("**株式価値計算**")
+                    st.write("株式価値 = 事業価値 − 純有利子負債")
+                    st.write("純有利子負債 = 有利子負債 − 現金及び現金同等物")
+                    
+                    standardized_bs = st.session_state.get('standardized_bs', {})
+                    
+                    col_eq1, col_eq2, col_eq3 = st.columns(3)
+                    with col_eq1:
+                        debt_short = standardized_bs.get('debt_short', 0) or 0
+                        debt_long = standardized_bs.get('debt_long', 0) or 0
+                        total_debt = debt_short + debt_long
+                        st.number_input("有利子負債 (円)", value=float(total_debt), 
+                                        format="%.0f", key="debt_for_equity")
+                    
+                    with col_eq2:
+                        cash = standardized_bs.get('cash', 0) or 0
+                        st.number_input("現金及び現金同等物 (円)", value=float(cash), 
+                                        format="%.0f", key="cash_for_equity")
+                    
+                    with col_eq3:
+                        st.write("")
+                        st.write("")
+                        if st.button("株式価値計算", key="equity_value_calc_btn"):
+                            debt_input = st.session_state.get('debt_for_equity', total_debt)
+                            cash_input = st.session_state.get('cash_for_equity', cash)
+                            net_debt = debt_input - cash_input
+                            equity_value = enterprise_value - net_debt
+                            
+                            st.session_state['net_debt'] = net_debt
+                            st.session_state['equity_value'] = equity_value
+                            
+                            col_eq_res1, col_eq_res2, col_eq_res3 = st.columns(3)
+                            with col_eq_res1:
+                                st.metric("純有利子負債", f"{net_debt:,.0f} 円")
+                            with col_eq_res2:
+                                st.metric("株式価値", f"{equity_value:,.0f} 円",
+                                          help="Equity Value = EV − Net Debt")
+                            with col_eq_res3:
+                                # 1株当たり価値（発行済株式数がある場合）
+                                shares = standardized_bs.get('shares_outstanding')
+                                if shares and shares > 0:
+                                    price_per_share = equity_value / shares
+                                    st.metric("1株当たり価値", f"{price_per_share:,.0f} 円",
+                                              help=f"株式価値 ÷ {shares:,.0f}株")
+                            
+                            st.write("**計算式:**")
+                            st.write(f"純有利子負債 = {debt_input:,.0f} − {cash_input:,.0f} = {net_debt:,.0f} 円")
+                            st.write(f"株式価値 = {enterprise_value:,.0f} − {net_debt:,.0f} = {equity_value:,.0f} 円")

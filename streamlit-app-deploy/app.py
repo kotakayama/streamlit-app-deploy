@@ -34,18 +34,12 @@ st.title("Valuation App")
 # ファイルアップローダーのボタンテキストをカスタマイズ
 st.markdown("""
 <style>
-[data-testid="stFileUploader"] section > button {
-    display: none;
+[data-testid="stFileUploader"] section button[kind="secondary"] {
+    font-size: 0;
 }
-[data-testid="stFileUploader"] section > button::after {
+[data-testid="stFileUploader"] section button[kind="secondary"]::after {
     content: "ファイルを選択する";
-    display: inline-block;
-}
-[data-testid="stFileUploader"] section > div {
-    display: block;
-}
-[data-testid="stFileUploader"] section > div::before {
-    content: "ファイルを選択する";
+    font-size: 14px;
 }
 </style>
 """, unsafe_allow_html=True)

@@ -196,7 +196,7 @@ with right:
     # Plan preview (アップロード済みの事業計画を表示)
     if 'plan_extract' in st.session_state:
         plan = st.session_state['plan_extract']
-        st.subheader("① Forecast FCF（将来FCFの算出）")
+        st.markdown("<h3>① Forecast FCF <span style='font-size: 0.7em;'>（将来FCFの算出）</span></h3>", unsafe_allow_html=True)
         
         # FCF計画を最初に表示（NOPATベースがある場合）
         if 'fcf_plan' in st.session_state and not st.session_state['fcf_plan'].empty:
@@ -211,7 +211,7 @@ with right:
             # WACC計算セクション（FCF表の後に表示）
             if 'standardized_bs' in st.session_state:
                 st.write("---")
-                st.subheader("② Calculate WACC（WACCの算出）")
+                st.markdown("<h3>② Calculate WACC <span style='font-size: 0.7em;'>（WACCの算出）</span></h3>", unsafe_allow_html=True)
                 st.write("WACC = (E/V)×Re + (D/V)×Rd×(1−Tc)")
                 
                 # Get BS data from standardized

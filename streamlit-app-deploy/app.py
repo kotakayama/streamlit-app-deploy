@@ -323,7 +323,7 @@ with right:
                     with col_tv1:
                         st.write(f"**最終年FCF**: {fcf_last:,.0f} 円")
                         st.write(f"**予測期間**: {forecast_years} 年")
-                        g = st.number_input("永続成長率 g (%)", value=2.0, step=0.1, key="tv_growth_rate") / 100.0
+                        g = st.number_input("永続成長率 g (%)", value=1.0, step=0.1, key="tv_growth_rate") / 100.0
                         
                         st.write("")
                         if st.button("▶️ Terminal Valueを計算する", key="tv_calc_btn", type="secondary"):

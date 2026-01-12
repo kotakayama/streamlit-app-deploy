@@ -14,6 +14,8 @@ def _norm_cell(x) -> str:
     s = s.replace("／", "/")
     s = s.replace("\uFF0F", "/")
     s = s.replace("\u00A0", " ")
+    s = s.replace("\n", " ")
+    s = re.sub(r"\s+", " ", s)
     return s.strip()
 
 

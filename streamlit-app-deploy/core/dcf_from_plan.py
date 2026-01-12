@@ -568,11 +568,13 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
         # NOPAT: 直接NOPATがあればそれを使用。無ければ EBIT*(1-税率)
         nopat_s = _find_series_simple(pl_long, ["税引後営業利益", "NOPAT"]).reindex(idx)
         if nopat_s.isna().all():
-            ebit_s = _find_series_simple(pl_long, ["営業利益", "EBIT"]).reindex(idx)
+            ebit_s = _find_series_simple(pl_long, ["営業利益", "営業損益", "EBIT", "operating income"]).reindex(idx)
             nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
 
-        # 減価償却
-        deprec_s = _find_series_simple(pl_long, ["減価償却", "減価償却費"]).reindex(idx)
+        # 減価償却（PL優先、無ければCFから）
+        deprec_s = _find_series_simple(pl_long, ["減価償却", "減価償却費", "償却費"]).reindex(idx)
+        if deprec_s.isna().all():
+            deprec_s = _find_series_simple(cf_long, ["減価償却", "減価償却費", "償却費"]).reindex(idx)
 
         # CAPEX（投資CF詳細から抽出）。キャッシュアウトは正値に反転
         capex_candidates = [

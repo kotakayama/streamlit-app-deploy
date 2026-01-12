@@ -65,6 +65,30 @@ with left:
                         st.info(f"FCF plan (NOPAT-based) extracted: {len(fcf_plan)} periods")
                     except Exception as fcf_err:
                         st.warning(f"FCF plan extraction failed: {str(fcf_err)}")
+                    
+                    # PDFが既にアップロードされている場合は、自動的に再処理してBS情報を取得
+                    stored_pdf = st.session_state.get('pdf_file')
+                    if stored_pdf is not None:
+                        try:
+                            raw, meta = ingest_financials_from_pdf(stored_pdf)
+                            standardized = {
+                                "revenue": raw["pl"].get("revenue"),
+                                "operating_income": raw["pl"].get("operating_income"),
+                                "ebitda": None,
+                                "net_income": raw["pl"].get("net_income"),
+                                "cash": raw["bs"].get("cash_and_deposits"),
+                                "debt_short": raw["bs"].get("short_term_debt"),
+                                "debt_long": raw["bs"].get("long_term_debt"),
+                                "lease_liabilities": raw["bs"].get("lease_liabilities"),
+                                "total_liabilities": raw["bs"].get("total_liabilities"),
+                                "total_equity": raw["bs"].get("total_equity"),
+                                "shares_outstanding": raw["shares"].get("shares_total"),
+                                "notes": None,
+                            }
+                            st.session_state['standardized_bs'] = standardized
+                            st.info("決算書のBS情報を自動読込しました")
+                        except Exception as pdf_err:
+                            st.warning(f"PDF再処理に失敗しました（WACCの資本構成は手動入力してください）: {str(pdf_err)}")
                 except Exception as e:
                     st.error(f"Plan extraction failed: {e}")
                 except Exception as e:
@@ -122,27 +146,6 @@ with right:
             "shares_common": "普通株式(株数)",
         }
 
-        def humanize_keys(d: dict) -> dict:
-            out = {}
-            for k, v in d.items():
-                if isinstance(v, dict):
-                    out[DISPLAY_LABELS.get(k, k)] = humanize_keys(v)
-                else:
-                    out[DISPLAY_LABELS.get(k, k)] = v
-            return out
-
-        st.subheader("A) Raw extracted (from PDF)")
-        # 表示用にキーを日本語化して出力
-        try:
-            human_raw = {
-                "pl": humanize_keys(raw.get("pl", {})),
-                "bs": humanize_keys(raw.get("bs", {})),
-                "shares": humanize_keys(raw.get("shares", {})),
-            }
-        except Exception:
-            human_raw = {"raw": raw}
-        st.json({"raw": human_raw, "meta": meta})
-
         # 標準化（LLM or ルール）
         standardized = {
             "revenue": raw["pl"].get("revenue"),
@@ -165,11 +168,6 @@ with right:
                 evlog.add("standardize.status", "ok", source_type="llm", notes="LLM normalization applied")
             except Exception as e:
                 evlog.add("standardize.status", "failed", source_type="llm", notes=str(e))
-
-        st.subheader("B) Standardized (for valuation)")
-        # 日本語ラベルを併記して表示
-        std_df = pd.DataFrame([{"field": k, "label": DISPLAY_LABELS.get(k, k), "value": v} for k, v in standardized.items()])
-        st.dataframe(std_df["label value"].tolist() if False else std_df[["label", "value"]].rename(columns={"label": "項目", "value": "値"}), use_container_width=True)
 
         # 時価総額の決定
         mcap = None
@@ -194,45 +192,10 @@ with right:
         evlog.add("net_debt", base["net_debt"], source_type="calc", calc_formula="debt_total - cash", unit="JPY")
 
         table = compute_valuation_table("Target", base, include_lease=True)
-
-        # Valuation 表の項目を日本語化して表示
-        VAL_LABELS = {
-            "Company": "対象企業",
-            "Market Cap": "時価総額",
-            "Net Debt": "ネット・デット（純有利子負債）",
-            "Lease (included)": "リース（含む）",
-            "Lease (excluded)": "リース（除く）",
-            "EV": "企業価値（EV）",
-            "EV/Sales": "EV/売上高",
-            "EV/EBITDA": "EV/EBITDA",
-            "PER": "PER",
-        }
-        disp_table = table.copy()
-        disp_table["Metric"] = disp_table["Metric"].map(VAL_LABELS).fillna(disp_table["Metric"])
-        disp_table = disp_table.rename(columns={"Metric": "項目", "Value": "値"})
-        st.subheader("C) Valuation Table")
-        st.dataframe(disp_table, use_container_width=True)
-
-        st.subheader("D) Evidence Log")
         ev_df = evlog.to_df()
-        # 人間向けラベル列を追加
-        def resolve_field_label(field_name: str) -> str:
-            if not field_name:
-                return ""
-            key = field_name.split('.')[-1]
-            return DISPLAY_LABELS.get(key, field_name)
-        if not ev_df.empty:
-            ev_df = ev_df.copy()
-            ev_df["項目"] = ev_df["field_name"].apply(resolve_field_label)
-            # 表示順を調整
-            cols = ["項目"] + [c for c in ev_df.columns if c != "項目"]
-            st.dataframe(ev_df[cols], use_container_width=True)
-        else:
-            st.dataframe(ev_df, use_container_width=True)
 
         # Export
-        # 標準化シートは日本語ラベル列（項目, 値）を出力
-        standardized_export = std_df[["label", "value"]].rename(columns={"label": "項目", "value": "値"}) if 'std_df' in locals() else pd.DataFrame(standardized.items(), columns=["field", "value"])
+        standardized_export = pd.DataFrame(standardized.items(), columns=["field", "value"])
         sheets = {
             "valuation": table,
             "standardized": standardized_export,

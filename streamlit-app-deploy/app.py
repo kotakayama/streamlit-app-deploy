@@ -305,24 +305,46 @@ with right:
                     wacc_tv = st.session_state['wacc_calculated']
                     fcf_plan_data = st.session_state.get('fcf_plan', pd.DataFrame())
                     
+                    # 年度選択のための準備
+                    available_periods = []
+                    period_to_fcf = {}
+                    
                     if not fcf_plan_data.empty:
-                        # Get last year FCF
+                        period_col = [c for c in fcf_plan_data.columns if c.lower() == 'period']
                         fcf_col = [c for c in fcf_plan_data.columns if c.upper() == 'FCF']
-                        if fcf_col:
-                            fcf_values = pd.to_numeric(fcf_plan_data[fcf_col[0]], errors='coerce')
-                            fcf_last = fcf_values.dropna().iloc[-1] if len(fcf_values.dropna()) > 0 else 0.0
-                            forecast_years = len(fcf_values.dropna())
-                        else:
-                            fcf_last = 0.0
-                            forecast_years = 0
-                    else:
-                        fcf_last = 0.0
-                        forecast_years = 0
+                        
+                        if period_col and fcf_col:
+                            for idx, row in fcf_plan_data.iterrows():
+                                period_val = row[period_col[0]]
+                                fcf_val = pd.to_numeric(row[fcf_col[0]], errors='coerce')
+                                if pd.notna(fcf_val):
+                                    available_periods.append(str(period_val))
+                                    period_to_fcf[str(period_val)] = fcf_val
                     
                     col_tv1, col_tv2 = st.columns(2)
                     with col_tv1:
-                        st.write(f"**最終年FCF**: {fcf_last:,.0f} 円")
-                        st.write(f"**予測期間**: {forecast_years} 年")
+                        if available_periods:
+                            # 年度選択ドロップダウン
+                            selected_period = st.selectbox(
+                                "最終年度を選択",
+                                options=available_periods,
+                                index=len(available_periods) - 1,  # デフォルトは最後の年度
+                                key="tv_selected_period",
+                                help="Terminal Value計算に使用する最終年度を選択してください"
+                            )
+                            
+                            # 選択された年度のFCFと予測期間を計算
+                            selected_index = available_periods.index(selected_period)
+                            fcf_last = period_to_fcf[selected_period]
+                            forecast_years = selected_index + 1  # 最初の年度が1年目
+                            
+                            st.write(f"**最終年FCF**: {fcf_last:,.0f} 円")
+                            st.write(f"**予測期間**: {forecast_years} 年")
+                        else:
+                            st.warning("FCFデータが見つかりません")
+                            fcf_last = 0.0
+                            forecast_years = 0
+                        
                         g = st.number_input("永続成長率 g (%)", value=1.0, step=0.1, key="tv_growth_rate") / 100.0
                         
                         st.write("")
@@ -337,6 +359,7 @@ with right:
                                 
                                 st.session_state['terminal_value'] = tv
                                 st.session_state['pv_terminal_value'] = pv_tv
+                                st.session_state['forecast_years'] = forecast_years
                     
                     with col_tv2:
                         pass

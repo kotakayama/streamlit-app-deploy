@@ -95,15 +95,10 @@ with left:
         except Exception as e:
             st.error(f"Excel読み込みエラー: {e}")
 
-    run = st.button("Run")
-
 with right:
     st.header("Outputs")
 
-    if run:
-        if not pdf_file:
-            st.error("PDFをアップロードしてください。")
-            st.stop()
+    if pdf_file:
 
         evlog = EvidenceLog()
 
@@ -221,7 +216,7 @@ with right:
         evlog.add("debt_total", base["debt_total"], source_type="calc", calc_formula="debt_short + debt_long", unit="JPY")
         evlog.add("net_debt", base["net_debt"], source_type="calc", calc_formula="debt_total - cash", unit="JPY")
 
-        table = compute_valuation_table(company or "Target", base, include_lease=include_lease)
+        table = compute_valuation_table("Target", base, include_lease=True)
 
         # Valuation 表の項目を日本語化して表示
         VAL_LABELS = {

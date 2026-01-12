@@ -271,67 +271,10 @@ with right:
         st.download_button("Download Excel", data=xlsx, file_name="valuation_output.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.download_button("Download Evidence JSON", data=json.dumps(evlog.to_dict(), ensure_ascii=False, indent=2), file_name="evidence.json", mime="application/json")
 
-    # WACC計算セクション（PDFまたはExcelアップロード後に表示）
-    if 'standardized_bs' in st.session_state:
-        st.write("---")
-        st.subheader("D) WACC計算")
-        st.write("WACC = (E/V)×Re + (D/V)×Rd×(1−Tc)")
-        
-        # Get BS data from standardized
-        bs_data = st.session_state.get('standardized_bs', {})
-        equity_default = float(bs_data.get('total_equity') or 0.0)
-        debt_short_default = float(bs_data.get('debt_short') or 0.0)
-        debt_long_default = float(bs_data.get('debt_long') or 0.0)
-        total_debt_default = debt_short_default + debt_long_default
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.write("**自己（株主）資本コスト**")
-            cost_of_equity = st.number_input("Re (%)", value=8.0, step=0.5, key="wacc_re")
-        with col2:
-            st.write("**有利子負債コスト**")
-            cost_of_debt = st.number_input("Rd (%)", value=2.0, step=0.1, key="wacc_rd")
-        with col3:
-            st.write("**資本構成（帳簿価額）**")
-            book_equity = st.number_input("自己資本 E (円)", value=equity_default, min_value=0.0, key="wacc_equity", help="最新の決算書（BS）の純資産")
-            book_debt = st.number_input("有利子負債 D (円)", value=total_debt_default, min_value=0.0, key="wacc_debt", help="短期借入金 + 長期借入金")
-        with col4:
-            st.write("**法人税率**")
-            tax_rate_wacc = st.number_input("Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
-        
-        if st.button("WACC計算", key="wacc_calc_btn"):
-            # Calculate WACC
-            E = float(book_equity)
-            D = float(book_debt)
-            V = E + D
-            Re = float(cost_of_equity) / 100.0
-            Rd = float(cost_of_debt) / 100.0
-            Tc = float(tax_rate_wacc) / 100.0
-            
-            if V == 0:
-                st.error("自己資本または有利子負債が必要です")
-            else:
-                wacc = (E/V) * Re + (D/V) * Rd * (1 - Tc)
-                st.session_state['wacc_calculated'] = wacc
-                
-                # Display results
-                col_res1, col_res2 = st.columns(2)
-                with col_res1:
-                    st.metric("計算されたWACC", f"{wacc*100:.2f}%")
-                with col_res2:
-                    st.write("")
-                    st.write("")
-                    st.write(f"E/V = {E/V*100:.1f}%, D/V = {D/V*100:.1f}%")
-                
-                # Show breakdown
-                st.write("**内訳:**")
-                st.write(f"- 株主資本部分：(E/V)×Re = {E/V:.3f} × {Re*100:.1f}% = {(E/V)*Re*100:.2f}%")
-                st.write(f"- 負債部分：(D/V)×Rd×(1−Tc) = {D/V:.3f} × {Rd*100:.1f}% × (1−{Tc*100:.0f}%) = {(D/V)*Rd*(1-Tc)*100:.2f}%")
-
     # Plan preview (アップロード済みの事業計画を表示)
     if 'plan_extract' in st.session_state:
         plan = st.session_state['plan_extract']
-        st.subheader("E) Uploaded Business Plan")
+        st.subheader("D) Uploaded Business Plan")
         st.write(f"Sheet: {plan['sheet']}  Unit: {plan.get('unit')}")
         
         # FCF計画を最初に表示（NOPATベースがある場合）
@@ -343,3 +286,60 @@ with right:
                 if col != 'period':
                     fcf_plan[col] = fcf_plan[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "")
             st.dataframe(fcf_plan, use_container_width=True)
+            
+            # WACC計算セクション（FCF表の後に表示）
+            if 'standardized_bs' in st.session_state:
+                st.write("---")
+                st.subheader("E) WACC計算")
+                st.write("WACC = (E/V)×Re + (D/V)×Rd×(1−Tc)")
+                
+                # Get BS data from standardized
+                bs_data = st.session_state.get('standardized_bs', {})
+                equity_default = float(bs_data.get('total_equity') or 0.0)
+                debt_short_default = float(bs_data.get('debt_short') or 0.0)
+                debt_long_default = float(bs_data.get('debt_long') or 0.0)
+                total_debt_default = debt_short_default + debt_long_default
+                
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.write("**自己（株主）資本コスト**")
+                    cost_of_equity = st.number_input("Re (%)", value=8.0, step=0.5, key="wacc_re")
+                with col2:
+                    st.write("**有利子負債コスト**")
+                    cost_of_debt = st.number_input("Rd (%)", value=2.0, step=0.1, key="wacc_rd")
+                with col3:
+                    st.write("**資本構成（帳簿価額）**")
+                    book_equity = st.number_input("自己資本 E (円)", value=equity_default, min_value=0.0, key="wacc_equity", help="最新の決算書（BS）の純資産")
+                    book_debt = st.number_input("有利子負債 D (円)", value=total_debt_default, min_value=0.0, key="wacc_debt", help="短期借入金 + 長期借入金")
+                with col4:
+                    st.write("**法人税率**")
+                    tax_rate_wacc = st.number_input("Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
+                
+                if st.button("WACC計算", key="wacc_calc_btn"):
+                    # Calculate WACC
+                    E = float(book_equity)
+                    D = float(book_debt)
+                    V = E + D
+                    Re = float(cost_of_equity) / 100.0
+                    Rd = float(cost_of_debt) / 100.0
+                    Tc = float(tax_rate_wacc) / 100.0
+                    
+                    if V == 0:
+                        st.error("自己資本または有利子負債が必要です")
+                    else:
+                        wacc = (E/V) * Re + (D/V) * Rd * (1 - Tc)
+                        st.session_state['wacc_calculated'] = wacc
+                        
+                        # Display results
+                        col_res1, col_res2 = st.columns(2)
+                        with col_res1:
+                            st.metric("計算されたWACC", f"{wacc*100:.2f}%")
+                        with col_res2:
+                            st.write("")
+                            st.write("")
+                            st.write(f"E/V = {E/V*100:.1f}%, D/V = {D/V*100:.1f}%")
+                        
+                        # Show breakdown
+                        st.write("**内訳:**")
+                        st.write(f"- 株主資本部分：(E/V)×Re = {E/V:.3f} × {Re*100:.1f}% = {(E/V)*Re*100:.2f}%")
+                        st.write(f"- 負債部分：(D/V)×Rd×(1−Tc) = {D/V:.3f} × {Rd*100:.1f}% × (1−{Tc*100:.0f}%) = {(D/V)*Rd*(1-Tc)*100:.2f}%")

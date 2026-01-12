@@ -38,14 +38,13 @@ left, right = st.columns([1, 2])
 
 with left:
     st.markdown("<h2>Financial Inputs <span style='font-size: 0.75em;'>（決算・事業計画）</span></h2>", unsafe_allow_html=True)
-    pdf_file = st.file_uploader("決算書PDF", type=["pdf"])
+    pdf_file = st.file_uploader("直近の決算書（PDF）をアップロードしてください", type=["pdf"])
     
     # Store PDF file in session for later use
     if pdf_file is not None:
         st.session_state['pdf_file'] = pdf_file
 
-    st.subheader("事業計画 (Excel)")
-    plan_file = st.file_uploader("事業計画ファイルをアップロード", type=["xls", "xlsx"], help="FS_年次様式のExcelを想定")
+    plan_file = st.file_uploader("中期事業計画（Excel）をアップロードしてください", type=["xls", "xlsx"], help="※ 将来キャッシュフローの算出に使用します")
     if plan_file is not None:
         try:
             sheets = list_sheet_names(plan_file)

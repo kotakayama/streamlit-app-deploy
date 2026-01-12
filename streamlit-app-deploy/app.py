@@ -236,7 +236,7 @@ with right:
                     st.write("**法人税率**")
                     tax_rate_wacc = st.number_input("Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
                 
-                if st.button("▶️ WACC計算", key="wacc_calc_btn", type="secondary"):
+                if st.button("▶️ WACC（割引率）を計算する", key="wacc_calc_btn", type="secondary"):
                     # Calculate WACC
                     E = float(book_equity)
                     D = float(book_debt)
@@ -315,7 +315,7 @@ with right:
                     with col_tv2:
                         st.write("")
                         st.write("")
-                        if st.button("▶️ Terminal Value計算", key="tv_calc_btn", type="secondary"):
+                        if st.button("▶️ Terminal Valueを計算する", key="tv_calc_btn", type="secondary"):
                             if wacc_tv <= g:
                                 st.error("WACC > g である必要があります（現在のWACC≤g）")
                             elif fcf_last <= 0:
@@ -416,7 +416,7 @@ with right:
                     with col_eq3:
                         st.write("")
                         st.write("")
-                        if st.button("▶️ 株式価値計算", key="equity_value_calc_btn", type="secondary"):
+                        if st.button("▶️ 株式価値を計算する", key="equity_value_calc_btn", type="secondary"):
                             debt_input = st.session_state.get('debt_for_equity', total_debt)
                             cash_input = st.session_state.get('cash_for_equity', cash)
                             net_debt = debt_input - cash_input
@@ -462,7 +462,7 @@ with right:
                     with col_sh2:
                         st.write("")
                         st.write("")
-                        if st.button("▶️ 理論株価を算出する", key="price_per_share_calc_btn", type="secondary"):
+                        if st.button("▶️ 理論株価を計算する", key="price_per_share_calc_btn", type="secondary"):
                             shares_calc = st.session_state.get('shares_for_price', shares_default)
                             
                             if shares_calc <= 0:

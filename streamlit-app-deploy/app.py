@@ -48,15 +48,11 @@ with left:
     if plan_file is not None:
         try:
             sheets = list_sheet_names(plan_file)
-            sheet_options = ["（シートを選択してください）"] + sheets
-            sheet_choice = st.selectbox("将来の売上・費用計画が記載されたシートを選択してください", sheet_options)
-            
-            # 実際のシートが選択されている場合のみボタンを有効化
-            if sheet_choice != "（シートを選択してください）":
-                if st.button("事業計画からキャッシュフローを生成", key="extract_plan"):
-                    try:
-                        plan_results = extract_yearly_table(plan_file, sheet_choice)
-                        st.session_state['plan_extract'] = plan_results
+            sheet_choice = st.selectbox("将来の売上・費用計画が記載されたシートを選択してください", sheets)
+            if st.button("事業計画からキャッシュフローを生成", key="extract_plan"):
+                try:
+                    plan_results = extract_yearly_table(plan_file, sheet_choice)
+                    st.session_state['plan_extract'] = plan_results
                     # plan_tidy は long format を保持（sheet, metric, period, value, unit）
                     st.session_state['plan_tidy'] = plan_results['long']
                     st.success(f"Sheet {sheet_choice} extracted: {len(plan_results['wide'])} rows, {len(plan_results['wide'].columns)} periods")

@@ -5,6 +5,7 @@ import os
 import json
 import difflib
 from datetime import datetime
+from pathlib import Path
 
 OP_CF_LABELS = ["営業活動によるキャッシュフロー"]
 INV_CF_LABELS = ["投資活動によるキャッシュフロー"]
@@ -323,3 +324,111 @@ def extract_fcf_from_workbook(path: str) -> pd.DataFrame:
             return df
     # nothing found
     return pd.DataFrame(columns=["period", "fcf"])
+
+
+def extract_future_fcf_plan(xlsx_file: str, forecast_years: int | None = None) -> pd.DataFrame:
+    """
+    Extract future FCF plan from uploaded Excel (FS_年次 sheet, CF section).
+    Returns DataFrame with columns: [period, 営業CF, 投資CF, FCF]
+    suitable for DCF analysis and display in business plan section.
+    
+    Args:
+        xlsx_file: Path to Excel file
+        forecast_years: Number of forecast years to include (if None, includes all)
+    
+    Returns:
+        DataFrame with period and FCF data
+    """
+    try:
+        # Try to import ingest_plan_excel to extract data by section
+        import sys
+        from pathlib import Path
+        
+        # Add parent directory to path to import ingest_plan_excel
+        core_dir = Path(__file__).parent
+        sys.path.insert(0, str(core_dir))
+        from ingest_plan_excel import extract_yearly_table_by_section
+        
+        # Extract CF section from FS_年次 sheet
+        section_results = extract_yearly_table_by_section(xlsx_file, "FS_年次")
+        cf_section = section_results.get("キャッシュフロー計算書")
+        
+        if not cf_section:
+            return pd.DataFrame(columns=["period", "営業CF", "投資CF", "FCF"])
+        
+        cf_long = cf_section["long"]
+        
+        # Extract operating CF
+        op_cf_keywords = ["営業", "operating"]
+        op_rows = cf_long[cf_long["metric"].str.contains("|".join(op_cf_keywords), case=False, na=False)]
+        # Look for the main operating cash flow line (usually "～キャッシュフロー")
+        main_op = op_rows[op_rows["metric"].str.contains("キャッシュフロー$", regex=True, case=False, na=False)]
+        if main_op.empty:
+            main_op = op_rows[op_rows["metric"].str.contains("営業", case=False, na=False)]
+        
+        op_by_period = {}
+        if not main_op.empty:
+            # Get the first matching metric (usually operating CF)
+            metric_name = main_op["metric"].iloc[0]
+            op_data = cf_long[cf_long["metric"] == metric_name].groupby("period")["value"].sum()
+            op_by_period = op_data.to_dict()
+        
+        # Extract investing CF
+        inv_cf_keywords = ["投資", "investing"]
+        inv_rows = cf_long[cf_long["metric"].str.contains("|".join(inv_cf_keywords), case=False, na=False)]
+        # Look for the main investing cash flow line
+        main_inv = inv_rows[inv_rows["metric"].str.contains("キャッシュフロー$", regex=True, case=False, na=False)]
+        if main_inv.empty:
+            main_inv = inv_rows[inv_rows["metric"].str.contains("投資", case=False, na=False)]
+        
+        inv_by_period = {}
+        if not main_inv.empty:
+            metric_name = main_inv["metric"].iloc[0]
+            inv_data = cf_long[cf_long["metric"] == metric_name].groupby("period")["value"].sum()
+            inv_by_period = inv_data.to_dict()
+        
+        # Extract FCF (フリーキャッシュフロー)
+        fcf_keywords = ["フリー", "フリーキャッシュ", "FCF", "free"]
+        fcf_rows = cf_long[cf_long["metric"].str.contains("|".join(fcf_keywords), case=False, na=False)]
+        # If FCF row exists in the data, use it; otherwise calculate
+        if not fcf_rows.empty:
+            # Use the first FCF metric found
+            metric_name = fcf_rows["metric"].iloc[0]
+            fcf_data = cf_long[cf_long["metric"] == metric_name].groupby("period")["value"].sum()
+            fcf_by_period = fcf_data.to_dict()
+        else:
+            # Calculate: FCF = Operating CF + Investing CF
+            all_periods = set(op_by_period.keys()) | set(inv_by_period.keys())
+            fcf_by_period = {}
+            for period in all_periods:
+                op_val = op_by_period.get(period, 0)
+                inv_val = inv_by_period.get(period, 0)
+                if pd.notna(op_val) and pd.notna(inv_val):
+                    fcf_by_period[period] = op_val + inv_val
+        
+        # Combine into result DataFrame
+        all_periods = sorted(set(op_by_period.keys()) | set(inv_by_period.keys()) | set(fcf_by_period.keys()))
+        
+        result_data = {
+            "period": all_periods,
+            "営業CF": [op_by_period.get(p, np.nan) for p in all_periods],
+            "投資CF": [inv_by_period.get(p, np.nan) for p in all_periods],
+            "FCF": [fcf_by_period.get(p, np.nan) for p in all_periods],
+        }
+        
+        result_df = pd.DataFrame(result_data)
+        
+        # Convert period to datetime-like string for sorting
+        result_df = result_df.sort_values("period").reset_index(drop=True)
+        
+        # Filter to forecast years if specified
+        if forecast_years and forecast_years > 0:
+            # Keep the last N years (forecast period)
+            result_df = result_df.tail(forecast_years).reset_index(drop=True)
+        
+        return result_df
+        
+    except Exception as e:
+        # If extraction fails, return empty DataFrame
+        print(f"Warning: extract_future_fcf_plan failed: {e}")
+        return pd.DataFrame(columns=["period", "営業CF", "投資CF", "FCF"])

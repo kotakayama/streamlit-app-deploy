@@ -11,7 +11,12 @@ from core.evidence import EvidenceLog
 from core.compute import compute_metrics, compute_valuation_table
 from core.export import to_excel_bytes
 import numpy as np
-from core.dcf_from_plan import build_fcf_from_cf, run_dcf, sensitivity_wacc_g, extract_future_fcf_plan
+from core.dcf_from_plan import (
+    build_fcf_from_cf,
+    run_dcf,
+    sensitivity_wacc_g,
+    extract_future_fcf_plan_nopat,
+)
 
 # LLM正規化は任意（OFFでも動く）
 USE_LLM = True
@@ -49,11 +54,11 @@ with left:
                     st.session_state['plan_tidy'] = plan_results['long']
                     st.success(f"Sheet {sheet_choice} extracted: {len(plan_results['wide'])} rows, {len(plan_results['wide'].columns)} periods")
                     
-                    # FCF計画も一緒に抽出
+                    # FCF計画（NOPATベース）も一緒に抽出（デフォルト税率30%）
                     try:
-                        fcf_plan = extract_future_fcf_plan(plan_file)
+                        fcf_plan = extract_future_fcf_plan_nopat(plan_file, tax_rate=0.30)
                         st.session_state['fcf_plan'] = fcf_plan
-                        st.info(f"FCF plan extracted: {len(fcf_plan)} periods")
+                        st.info(f"FCF plan (NOPAT-based) extracted: {len(fcf_plan)} periods")
                     except Exception as fcf_err:
                         st.warning(f"FCF plan extraction failed: {str(fcf_err)}")
                 except Exception as e:
@@ -269,9 +274,9 @@ with right:
         st.subheader("E) Uploaded Business Plan")
         st.write(f"Sheet: {plan['sheet']}  Unit: {plan.get('unit')}")
         
-        # FCF計画を最初に表示（存在する場合）
+        # FCF計画を最初に表示（NOPATベースがある場合）
         if 'fcf_plan' in st.session_state and not st.session_state['fcf_plan'].empty:
-            st.write("**FCF計画（キャッシュフロー計算書より抽出）**")
+            st.write("**FCF計画（NOPAT + 減価償却 − CAPEX − Δ運転資本）※税率デフォルト30%**")
             fcf_plan = st.session_state['fcf_plan'].copy()
             # 数値列のフォーマット
             for col in fcf_plan.columns:

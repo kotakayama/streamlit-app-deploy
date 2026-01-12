@@ -432,3 +432,117 @@ def extract_future_fcf_plan(xlsx_file: str, forecast_years: int | None = None) -
         # If extraction fails, return empty DataFrame
         print(f"Warning: extract_future_fcf_plan failed: {e}")
         return pd.DataFrame(columns=["period", "営業CF", "投資CF", "FCF"])
+
+
+# -------------------- NOPAT-based FCF (DCF theoretical) --------------------
+
+def _find_series_simple(long_df: pd.DataFrame, synonyms: list[str]) -> pd.Series:
+    """Find a series by fuzzy/substring matching from a long table (metric/period/value)."""
+    if long_df is None or long_df.empty:
+        return pd.Series(dtype=float)
+    df = long_df.copy()
+    if "metric" not in df.columns:
+        return pd.Series(dtype=float)
+    df["metric_low"] = df["metric"].astype(str).str.lower()
+    syn_low = [s.lower() for s in synonyms]
+    mask = df["metric_low"].apply(lambda m: any(s in m for s in syn_low))
+    cand = df[mask]
+    if cand.empty:
+        # fuzzy
+        uniq = df["metric_low"].unique().tolist()
+        hits = set()
+        for syn in syn_low:
+            for c in difflib.get_close_matches(syn, uniq, n=5, cutoff=0.7):
+                hits.add(c)
+        if not hits:
+            return pd.Series(dtype=float)
+        cand = df[df["metric_low"].isin(list(hits))]
+    s = cand.groupby("period")["value"].sum().sort_index()
+    return s
+
+
+def build_fcf_from_nopat_long(plan_long: pd.DataFrame, periods: list[str], tax_rate: float = 0.30) -> pd.DataFrame:
+    """
+    DCF理論型: FCF = NOPAT + 減価償却 − CAPEX − Δ運転資本
+
+    - NOPAT: 優先して「税引後営業利益/NOPAT」を使用。なければ EBIT(=営業利益)×(1-税率)
+    - 減価償却: 「減価償却」「減価償却費」
+    - CAPEX: 「設備投資」「CAPEX」「有形固定資産の取得」「無形固定資産の取得」等（キャッシュアウトは正値化）
+    - Δ運転資本: Δ(売上債権 + 棚卸資産 − 仕入債務)
+    """
+    # Series抽出
+    nopat_s = _find_series_simple(plan_long, ["税引後営業利益", "NOPAT"])  # 直接NOPATがあれば使用
+    ebit_s = _find_series_simple(plan_long, ["営業利益", "EBIT"]) if nopat_s.empty else pd.Series(dtype=float)
+    deprec_s = _find_series_simple(plan_long, ["減価償却", "減価償却費"])  # 減価償却
+
+    # CAPEX 候補（投資CFの詳細行想定）。値がマイナス=支出なら正に反転
+    capex_candidates = [
+        "設備投資", "CAPEX", "有形固定資産の取得", "無形固定資産の取得", "固定資産の取得",
+        "機械装置の取得", "建物の取得", "ソフトウェアの取得"
+    ]
+    capex_s = _find_series_simple(plan_long, capex_candidates)
+    if not capex_s.empty:
+        capex_s = capex_s.apply(lambda v: abs(float(v)) if pd.notna(v) else np.nan)
+
+    # 運転資本: AR + Inventory - AP
+    ar_s = _find_series_simple(plan_long, ["売上債権", "売掛金", "受取手形及び売掛金", "Trade receivables", "Accounts receivable"])
+    inv_s = _find_series_simple(plan_long, ["棚卸資産", "商品", "製品", "原材料", "仕掛品", "Inventories"])
+    ap_s = _find_series_simple(plan_long, ["仕入債務", "買掛金", "支払手形及び買掛金", "Trade payables", "Accounts payable"])
+
+    # 期間整形
+    idx = pd.Index(periods)
+
+    # NOPAT決定
+    if nopat_s.empty:
+        # EBIT*(1-tax)
+        ebit = ebit_s.reindex(idx)
+        nopat = ebit.astype(float) * (1 - float(tax_rate)) if not ebit.empty else pd.Series(index=idx, dtype=float)
+    else:
+        nopat = nopat_s.reindex(idx)
+
+    deprec = deprec_s.reindex(idx)
+    capex = capex_s.reindex(idx) if not capex_s.empty else pd.Series(index=idx, dtype=float)
+
+    # Δ運転資本の算定
+    nwc = None
+    if not ar_s.empty or not inv_s.empty or not ap_s.empty:
+        ar = ar_s.reindex(idx).astype(float)
+        inv = inv_s.reindex(idx).astype(float)
+        ap = ap_s.reindex(idx).astype(float)
+        nwc = ar.fillna(0.0) + inv.fillna(0.0) - ap.fillna(0.0)
+        d_nwc = nwc.diff()
+    else:
+        d_nwc = pd.Series(index=idx, dtype=float)
+
+    out = pd.DataFrame({
+        "period": idx,
+        "NOPAT": nopat.values,
+        "減価償却": deprec.values,
+        "CAPEX": capex.values,
+        "Δ運転資本": d_nwc.values,
+    })
+    # FCF = NOPAT + 減価償却 − CAPEX − Δ運転資本
+    for col in ["NOPAT", "減価償却", "CAPEX", "Δ運転資本"]:
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+    out["FCF"] = out["NOPAT"].fillna(0.0) + out["減価償却"].fillna(0.0) - out["CAPEX"].fillna(0.0) - out["Δ運転資本"].fillna(0.0)
+    return out
+
+
+def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, forecast_years: int | None = None) -> pd.DataFrame:
+    """
+    FS_年次などのワークブックから、DCF理論型（NOPATベース）のFCF計画を抽出。
+    返す列: [period, NOPAT, 減価償却, CAPEX, Δ運転資本, FCF]
+    """
+    try:
+        tidy = extract_cf_tidy_from_workbook(xlsx_file)
+        if tidy.empty:
+            return pd.DataFrame(columns=["period", "NOPAT", "減価償却", "CAPEX", "Δ運転資本", "FCF"])
+        # 利用する期間（昇順）
+        periods = sorted(tidy["period"].dropna().astype(str).unique().tolist())
+        fcf_df = build_fcf_from_nopat_long(tidy[["metric", "period", "value"]], periods, tax_rate=tax_rate)
+        if forecast_years and forecast_years > 0:
+            fcf_df = fcf_df.tail(forecast_years).reset_index(drop=True)
+        return fcf_df
+    except Exception as e:
+        print(f"Warning: extract_future_fcf_plan_nopat failed: {e}")
+        return pd.DataFrame(columns=["period", "NOPAT", "減価償却", "CAPEX", "Δ運転資本", "FCF"])

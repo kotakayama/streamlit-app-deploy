@@ -283,25 +283,50 @@ with right:
                 if col != 'period':
                     fcf_plan[col] = fcf_plan[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "")
             st.dataframe(fcf_plan, use_container_width=True)
-        
-        # その他の計画表
-        if plan['wide'].empty:
-            st.warning("注: 抽出結果が空です。ヘッダ検出や科目列、年次列を確認します。下記は原本プレビューです（ヘッダ周辺）。")
-            if 'raw_preview' in plan:
-                st.dataframe(plan['raw_preview'], use_container_width=True)
-            st.write("検出情報:")
-            st.write({
-                "header_row": plan.get('header_row'),
-                "label_col": plan.get('label_col'),
-                "period_cols": [p.get('period') for p in plan.get('period_cols', [])],
-            })
-        else:
-            st.dataframe(plan['wide'], use_container_width=True)
-            # long table（必要なら展開）
-            with st.expander("Long format (period, metric, value)"):
-                st.dataframe(plan['long'], use_container_width=True)
-            plan_xlsx = to_excel_bytes({"plan_wide": plan['wide'], "plan_long": plan['long']})
-            st.download_button("Download Extracted Plan", data=plan_xlsx, file_name="plan_extracted.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
+            # WACC計算セクション
+            st.write("---")
+            st.subheader("F) WACC計算")
+            st.write("WACC = (E/V)×Re + (D/V)×Rd×(1−Tc)")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                market_cap_wacc = st.number_input("時価総額 E (円)", value=0.0, min_value=0.0, key="wacc_mcap")
+                net_debt_wacc = st.number_input("ネット・デット D (円)", value=0.0, key="wacc_debt")
+            with col2:
+                cost_of_equity = st.number_input("株主資本コスト Re (%)", value=8.0, step=0.5, key="wacc_re")
+                cost_of_debt = st.number_input("負債コスト Rd (%)", value=2.0, step=0.1, key="wacc_rd")
+            with col3:
+                tax_rate_wacc = st.number_input("法人税率 Tc (%)", value=30.0, min_value=0.0, max_value=100.0, step=0.5, key="wacc_tc")
+            
+            if st.button("WACC計算", key="wacc_calc_btn"):
+                # Calculate WACC
+                E = float(market_cap_wacc)
+                D = float(net_debt_wacc)
+                V = E + D
+                Re = float(cost_of_equity) / 100.0
+                Rd = float(cost_of_debt) / 100.0
+                Tc = float(tax_rate_wacc) / 100.0
+                
+                if V == 0:
+                    st.error("時価総額またはネット・デットが必要です")
+                else:
+                    wacc = (E/V) * Re + (D/V) * Rd * (1 - Tc)
+                    st.session_state['wacc_calculated'] = wacc
+                    
+                    # Display results
+                    col_res1, col_res2 = st.columns(2)
+                    with col_res1:
+                        st.metric("計算されたWACC", f"{wacc*100:.2f}%")
+                    with col_res2:
+                        st.write("")
+                        st.write("")
+                        st.write(f"E/V = {E/V*100:.1f}%, D/V = {D/V*100:.1f}%")
+                    
+                    # Show breakdown
+                    st.write("**内訳:**")
+                    st.write(f"- 株主資本部分：(E/V)×Re = {E/V:.3f} × {Re*100:.1f}% = {(E/V)*Re*100:.2f}%")
+                    st.write(f"- 負債部分：(D/V)×Rd×(1−Tc) = {D/V:.3f} × {Rd*100:.1f}% × (1−{Tc*100:.0f}%) = {(D/V)*Rd*(1-Tc)*100:.2f}%")
 
     # --- DCF (v1): CF -> FCF -> PV 計算 ---
     if 'plan_tidy' in st.session_state:

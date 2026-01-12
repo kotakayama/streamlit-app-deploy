@@ -39,6 +39,10 @@ left, right = st.columns([1, 2])
 with left:
     st.header("1) Upload")
     pdf_file = st.file_uploader("決算書PDF", type=["pdf"])
+    
+    # Store PDF file in session for later use
+    if pdf_file is not None:
+        st.session_state['pdf_file'] = pdf_file
 
     st.subheader("事業計画 (Excel)")
     plan_file = st.file_uploader("事業計画ファイルをアップロード", type=["xls", "xlsx"], help="FS_年次様式のExcelを想定")
@@ -61,6 +65,31 @@ with left:
                         st.info(f"FCF plan (NOPAT-based) extracted: {len(fcf_plan)} periods")
                     except Exception as fcf_err:
                         st.warning(f"FCF plan extraction failed: {str(fcf_err)}")
+                    
+                    # PDFが既にアップロードされている場合は、自動的に再処理してBS情報を取得
+                    stored_pdf = st.session_state.get('pdf_file')
+                    if stored_pdf is not None:
+                        try:
+                            raw, meta = ingest_financials_from_pdf(stored_pdf)
+                            evlog_temp = EvidenceLog()
+                            standardized = {
+                                "revenue": raw["pl"].get("revenue"),
+                                "operating_income": raw["pl"].get("operating_income"),
+                                "ebitda": None,
+                                "net_income": raw["pl"].get("net_income"),
+                                "cash": raw["bs"].get("cash_and_deposits"),
+                                "debt_short": raw["bs"].get("short_term_debt"),
+                                "debt_long": raw["bs"].get("long_term_debt"),
+                                "lease_liabilities": raw["bs"].get("lease_liabilities"),
+                                "total_liabilities": raw["bs"].get("total_liabilities"),
+                                "total_equity": raw["bs"].get("total_equity"),
+                                "shares_total": raw["shares"].get("shares_total"),
+                                "notes": None,
+                            }
+                            st.session_state['standardized_bs'] = standardized
+                            st.info("決算書のBS情報を自動読込しました")
+                        except Exception as pdf_err:
+                            st.warning(f"PDF再処理に失敗しました（WACCの資本構成は手動入力してください）: {str(pdf_err)}")
                 except Exception as e:
                     st.error(f"Plan extraction failed: {e}")
         except Exception as e:

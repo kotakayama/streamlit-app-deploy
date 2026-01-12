@@ -324,22 +324,34 @@ with right:
                     col_tv1, col_tv2 = st.columns(2)
                     with col_tv1:
                         if available_periods:
-                            # 年度選択ドロップダウン
-                            selected_period = st.selectbox(
-                                "最終年度を選択",
+                            # 開始年度選択ドロップダウン
+                            start_period = st.selectbox(
+                                "開始年度を選択",
                                 options=available_periods,
-                                index=len(available_periods) - 1,  # デフォルトは最後の年度
-                                key="tv_selected_period",
+                                index=0,  # デフォルトは最初の年度
+                                key="tv_start_period",
+                                help="予測期間の開始年度を選択してください"
+                            )
+                            
+                            # 最終年度選択ドロップダウン（開始年度以降のみ）
+                            start_index = available_periods.index(start_period)
+                            end_period_options = available_periods[start_index:]
+                            
+                            end_period = st.selectbox(
+                                "最終年度を選択",
+                                options=end_period_options,
+                                index=len(end_period_options) - 1,  # デフォルトは最後の年度
+                                key="tv_end_period",
                                 help="Terminal Value計算に使用する最終年度を選択してください"
                             )
                             
                             # 選択された年度のFCFと予測期間を計算
-                            selected_index = available_periods.index(selected_period)
-                            fcf_last = period_to_fcf[selected_period]
-                            forecast_years = selected_index + 1  # 最初の年度が1年目
+                            end_index = available_periods.index(end_period)
+                            fcf_last = period_to_fcf[end_period]
+                            forecast_years = end_index - start_index + 1  # 期間の年数
                             
                             st.write(f"**最終年FCF**: {fcf_last:,.0f} 円")
-                            st.write(f"**予測期間**: {forecast_years} 年")
+                            st.write(f"**予測期間**: {forecast_years} 年 ({start_period} 〜 {end_period})")
                         else:
                             st.warning("FCFデータが見つかりません")
                             fcf_last = 0.0

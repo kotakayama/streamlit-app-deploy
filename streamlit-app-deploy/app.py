@@ -37,7 +37,7 @@ if not os.getenv("OPENAI_API_KEY"):
 left, right = st.columns([1, 2])
 
 with left:
-    st.header("1) Upload")
+    st.header("Financial Inputs（決算・事業計画）")
     pdf_file = st.file_uploader("決算書PDF", type=["pdf"])
     
     # Store PDF file in session for later use
@@ -97,7 +97,7 @@ with left:
             st.error(f"Excel読み込みエラー: {e}")
 
 with right:
-    st.header("Outputs")
+    st.header("Valuation Summary（株価算定結果）")
 
     if pdf_file:
 

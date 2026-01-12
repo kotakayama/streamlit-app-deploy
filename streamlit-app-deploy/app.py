@@ -215,10 +215,10 @@ with right:
         if 'fcf_plan' in st.session_state and not st.session_state['fcf_plan'].empty:
             st.write("**FCF計画（NOPAT + 減価償却 − CAPEX − Δ運転資本）※税率デフォルト30%、単位：百万円**")
             fcf_plan = st.session_state['fcf_plan'].copy()
-            # 数値列を百万円単位に変換してフォーマット
+            # 数値列のフォーマット（データは既に百万円単位）
             for col in fcf_plan.columns:
                 if col != 'period':
-                    fcf_plan[col] = fcf_plan[col].apply(lambda x: f"{x/1_000_000:,.0f}" if pd.notna(x) and x != 0 else ("0" if pd.notna(x) else ""))
+                    fcf_plan[col] = fcf_plan[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "")
             st.dataframe(fcf_plan, use_container_width=True)
             
             # WACC計算セクション（FCF表の後に表示）

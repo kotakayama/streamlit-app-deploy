@@ -356,7 +356,8 @@ with right:
                                     "開始年度を選択",
                                     options=available_periods,
                                     index=default_start_idx,
-                                    help="予測期間の開始年度を選択してください"
+                                    help="予測期間の開始年度を選択してください",
+                                    key="tv_start_period_select"
                                 )
                                 
                                 # 最終年度選択ドロップダウン（開始年度以降のみ）
@@ -364,15 +365,20 @@ with right:
                                 end_period_options = available_periods[start_index:]
                                 
                                 # デフォルト値を設定（保存された値があればそれを使用）
+                                # 開始年度が変更された場合は、最終年度を最後にリセット
                                 default_end_idx = len(end_period_options) - 1
-                                if 'tv_display_end' in st.session_state and st.session_state['tv_display_end'] in end_period_options:
-                                    default_end_idx = end_period_options.index(st.session_state['tv_display_end'])
+                                if 'tv_display_end' in st.session_state:
+                                    saved_end = st.session_state['tv_display_end']
+                                    # 開始年度が変更されていないか、保存された最終年度が新しいオプションリストに存在する場合のみ使用
+                                    if saved_end in end_period_options:
+                                        default_end_idx = end_period_options.index(saved_end)
                                 
                                 end_period = st.selectbox(
                                     "最終年度を選択",
                                     options=end_period_options,
                                     index=default_end_idx,
-                                    help="Terminal Value計算に使用する最終年度を選択してください"
+                                    help="Terminal Value計算に使用する最終年度を選択してください",
+                                    key="tv_end_period_select"
                                 )
                                 
                                 # デフォルト成長率を設定

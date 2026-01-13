@@ -95,13 +95,33 @@ with left:
                     
                     # FCF計画（NOPATベース）も一緒に抽出（デフォルト税率30%）
                     try:
+                        # デバッグ出力をキャプチャするためにstdoutをリダイレクト
+                        import io
+                        import sys
+                        old_stdout = sys.stdout
+                        sys.stdout = captured_output = io.StringIO()
+                        
                         fcf_plan = extract_future_fcf_plan_nopat(plan_file, tax_rate=0.30)
+                        
+                        # stdoutを元に戻す
+                        sys.stdout = old_stdout
+                        debug_output = captured_output.getvalue()
+                        
                         st.session_state['fcf_plan'] = fcf_plan
                         st.info(f"FCF plan (NOPAT-based) extracted: {len(fcf_plan)} periods")
+                        
+                        # デバッグ出力を表示
+                        if debug_output:
+                            with st.expander("🔍 NOPAT計算のデバッグ情報", expanded=True):
+                                st.code(debug_output)
+                        
                         # 最初の期間のNOPATを表示して確認
                         if not fcf_plan.empty and 'NOPAT' in fcf_plan.columns:
                             first_period = fcf_plan.iloc[0]
-                            st.success(f"✓ NOPAT計算完了: {first_period['period']} = {first_period['NOPAT']:.2f} 百万円")
+                            if pd.notna(first_period['NOPAT']):
+                                st.success(f"✓ NOPAT計算完了: {first_period['period']} = {first_period['NOPAT']:.2f} 百万円")
+                            else:
+                                st.error(f"⚠️ NOPAT計算失敗: {first_period['period']}のNOPATがNaNです")
                     except Exception as fcf_err:
                         st.warning(f"FCF plan extraction failed: {str(fcf_err)}")
                     

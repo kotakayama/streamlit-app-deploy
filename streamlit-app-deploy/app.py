@@ -367,10 +367,9 @@ with right:
                                 
                                 # 保存された最終年度を使用（なければ最後の年度）
                                 saved_end = st.session_state.get('tv_display_end')
-                                saved_start_check = st.session_state.get('tv_display_start')
                                 
-                                # 開始年度が変わっていない、かつ保存された最終年度が有効な場合のみ使用
-                                if saved_end and saved_start_check == start_period and saved_end in end_period_options:
+                                # 保存された最終年度が現在のオプションリストに存在する場合はそれを使用
+                                if saved_end and saved_end in end_period_options:
                                     default_end_idx = end_period_options.index(saved_end)
                                 else:
                                     default_end_idx = len(end_period_options) - 1

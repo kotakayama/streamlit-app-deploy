@@ -241,10 +241,20 @@ with right:
         if 'fcf_plan' in st.session_state and not st.session_state['fcf_plan'].empty:
             st.write("**FCF計画（NOPAT + 減価償却 − CAPEX − Δ運転資本）※税率デフォルト30%、単位：百万円**")
             fcf_plan = st.session_state['fcf_plan'].copy()
+            
+            # デバッグ: 元のデータを確認
+            st.write(f"DEBUG: fcf_planの形状: {fcf_plan.shape}")
+            st.write(f"DEBUG: fcf_planのカラム: {fcf_plan.columns.tolist()}")
+            st.write(f"DEBUG: NOPAT列の最初の3つの値: {fcf_plan['NOPAT'].head(3).tolist() if 'NOPAT' in fcf_plan.columns else 'NOPATカラムなし'}")
+            st.write("DEBUG: 元のfcf_plan（フォーマット前）:")
+            st.dataframe(fcf_plan.head(), use_container_width=True)
+            
             # 数値列のフォーマット（データは既に百万円単位）
             for col in fcf_plan.columns:
                 if col != 'period':
                     fcf_plan[col] = fcf_plan[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "")
+            
+            st.write("DEBUG: フォーマット後のfcf_plan:")
             st.dataframe(fcf_plan, use_container_width=True)
             
             # WACC計算セクション（FCF表の後に表示）

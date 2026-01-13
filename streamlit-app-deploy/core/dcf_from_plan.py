@@ -560,6 +560,8 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
         periods = [str(p) for p in periods]
         if not periods:
             return pd.DataFrame(columns=["period", "NOPAT", "減価償却", "CAPEX", "Δ運転資本", "FCF"])
+        
+        print(f"DEBUG: extract_future_fcf_plan_nopat - 取得された期間: {periods}")
         idx = pd.Index(periods)
 
         pl_long = pl.get("long") if pl else pd.DataFrame(columns=["metric", "period", "value"])
@@ -575,6 +577,7 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
             else:
                 # Fallback: Excel直接読み取り（複数列に項目がある場合に対応）
                 try:
+                    print(f"DEBUG: Excel直接読み取り開始。期待される期間: {idx.tolist()}")
                     df_raw = pd.read_excel(xlsx_file, sheet_name="FS_年次")
                     # 期間列を特定（行0の列15以降に日付がある）
                     if not df_raw.empty and len(df_raw) > 0:
@@ -585,6 +588,8 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
                             if pd.notna(val) and isinstance(val, (pd.Timestamp, pd._libs.tslibs.timestamps.Timestamp)):
                                 period_str = pd.to_datetime(val).strftime('%Y-%m-%d')
                                 period_cols[col_name] = period_str
+                        
+                        print(f"DEBUG: 検出された期間列: {list(period_cols.values())}")
                         
                         # 営業利益の行を探す（列0-4のいずれかに「営業利益」がある行）
                         ebit_row_idx = None
@@ -599,6 +604,8 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
                             if ebit_row_idx is not None:
                                 break
                         
+                        print(f"DEBUG: 営業利益の行: {ebit_row_idx}")
+                        
                         if ebit_row_idx is not None and period_cols:
                             # 営業利益の値を抽出
                             ebit_row = df_raw.iloc[ebit_row_idx]
@@ -608,12 +615,20 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
                                 if pd.notna(val) and isinstance(val, (int, float, np.integer, np.floating)):
                                     ebit_dict[period_str] = float(val)
                             
+                            print(f"DEBUG: 抽出された営業利益: {ebit_dict}")
+                            
                             if ebit_dict:
-                                ebit_s = pd.Series(ebit_dict).reindex(idx)
+                                ebit_s = pd.Series(ebit_dict)
+                                print(f"DEBUG: reindex前のebit_s.index: {ebit_s.index.tolist()}")
+                                ebit_s = ebit_s.reindex(idx)
+                                print(f"DEBUG: reindex後のebit_s: {ebit_s.to_dict()}")
                                 nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
                                 print(f"DEBUG: 営業利益を Excel から直接取得しました（行{ebit_row_idx}）")
+                                print(f"DEBUG: 計算されたNOPAT: {nopat_s.to_dict()}")
                 except Exception as e:
                     print(f"DEBUG: Excel直接読み取り失敗: {e}")
+                    import traceback
+                    traceback.print_exc()
 
         # 減価償却（PL優先、無ければCFから）
         deprec_s = _find_series_simple(pl_long, ["減価償却", "減価償却費", "償却費"]).reindex(idx)

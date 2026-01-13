@@ -51,6 +51,19 @@ left, right = st.columns([1, 2])
 
 with left:
     st.markdown("<h2>Financial Inputs <span style='font-size: 0.6em;'>（決算・事業計画）</span></h2>", unsafe_allow_html=True)
+    
+    # セッションクリアボタンを追加
+    if st.button("🔄 データをクリアして再計算", help="アップロードしたデータをクリアして、最初からやり直します"):
+        # fcf_planとwacc関連のsession_stateをクリア
+        keys_to_clear = ['fcf_plan', 'wacc_calculated', 'wacc_inputs', 'terminal_value', 'pv_terminal_value', 
+                         'forecast_years', 'tv_g_used', 'tv_fcf_last', 'tv_forecast_years', 'tv_display_start', 
+                         'tv_display_end', 'net_debt', 'equity_value', 'price_per_share', 'shares_used']
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.success("データをクリアしました。Excelファイルを再アップロードしてください。")
+        st.rerun()
+    
     pdf_file = st.file_uploader("直近の決算書（PDF）をアップロードしてください", type=["pdf"])
     
     # Store PDF file in session for later use
@@ -59,6 +72,15 @@ with left:
 
     plan_file = st.file_uploader("中期事業計画（Excel）をアップロードしてください", type=["xls", "xlsx"], help="※ 将来キャッシュフローの算出に使用します")
     if plan_file is not None:
+        # ファイルIDをチェックして、新しいファイルの場合はfcf_planをクリア
+        file_id = f"{plan_file.name}_{plan_file.size}"
+        if 'last_plan_file_id' not in st.session_state or st.session_state['last_plan_file_id'] != file_id:
+            st.session_state['last_plan_file_id'] = file_id
+            # 新しいファイルなので、古いfcf_planをクリア
+            if 'fcf_plan' in st.session_state:
+                del st.session_state['fcf_plan']
+            st.info("新しいExcelファイルが検出されました。")
+        
         try:
             sheets = list_sheet_names(plan_file)
             sheet_options = ["シートが選択されていません"] + sheets
@@ -76,6 +98,10 @@ with left:
                         fcf_plan = extract_future_fcf_plan_nopat(plan_file, tax_rate=0.30)
                         st.session_state['fcf_plan'] = fcf_plan
                         st.info(f"FCF plan (NOPAT-based) extracted: {len(fcf_plan)} periods")
+                        # 最初の期間のNOPATを表示して確認
+                        if not fcf_plan.empty and 'NOPAT' in fcf_plan.columns:
+                            first_period = fcf_plan.iloc[0]
+                            st.success(f"✓ NOPAT計算完了: {first_period['period']} = {first_period['NOPAT']:.2f} 百万円")
                     except Exception as fcf_err:
                         st.warning(f"FCF plan extraction failed: {str(fcf_err)}")
                     

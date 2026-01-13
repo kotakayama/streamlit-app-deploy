@@ -598,9 +598,15 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
                         period_cols = {}
                         for col_name in df_raw.columns:
                             val = date_row[col_name]
-                            if pd.notna(val) and isinstance(val, (pd.Timestamp, pd._libs.tslibs.timestamps.Timestamp)):
-                                period_str = pd.to_datetime(val).strftime('%Y-%m-%d')
-                                period_cols[col_name] = period_str
+                            # より柔軟な日付型チェック
+                            if pd.notna(val):
+                                try:
+                                    # pd.to_datetimeで変換できるかチェック
+                                    dt = pd.to_datetime(val)
+                                    period_str = dt.strftime('%Y-%m-%d')
+                                    period_cols[col_name] = period_str
+                                except:
+                                    pass
                         
                         print(f"DEBUG: 検出された期間列: {list(period_cols.values())}")
                         

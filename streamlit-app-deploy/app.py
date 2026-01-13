@@ -52,18 +52,6 @@ left, right = st.columns([1, 2])
 with left:
     st.markdown("<h2>Financial Inputs <span style='font-size: 0.6em;'>（決算・事業計画）</span></h2>", unsafe_allow_html=True)
     
-    # セッションクリアボタンを追加
-    if st.button("🔄 データをクリアして再計算", help="アップロードしたデータをクリアして、最初からやり直します"):
-        # fcf_planとwacc関連のsession_stateをクリア
-        keys_to_clear = ['fcf_plan', 'wacc_calculated', 'wacc_inputs', 'terminal_value', 'pv_terminal_value', 
-                         'forecast_years', 'tv_g_used', 'tv_fcf_last', 'tv_forecast_years', 'tv_display_start', 
-                         'tv_display_end', 'net_debt', 'equity_value', 'price_per_share', 'shares_used']
-        for key in keys_to_clear:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.success("データをクリアしました。Excelファイルを再アップロードしてください。")
-        st.rerun()
-    
     pdf_file = st.file_uploader("直近の決算書（PDF）をアップロードしてください", type=["pdf"])
     
     # Store PDF file in session for later use
@@ -126,8 +114,18 @@ with left:
                             st.warning(f"PDF再処理に失敗しました（WACCの資本構成は手動入力してください）: {str(pdf_err)}")
                 except Exception as e:
                     st.error(f"Plan extraction failed: {e}")
-                except Exception as e:
-                    st.error(f"Plan extraction failed: {e}")
+            
+            # データをクリアして再計算ボタン
+            if st.button("🔄 データをクリアして再計算", help="アップロードしたデータをクリアして、最初からやり直します"):
+                keys_to_clear = ['fcf_plan', 'wacc_calculated', 'wacc_inputs', 'terminal_value', 'pv_terminal_value', 
+                               'forecast_years', 'tv_g_used', 'tv_fcf_last', 'tv_forecast_years', 'tv_display_start', 
+                               'tv_display_end', 'net_debt', 'equity_value', 'price_per_share', 'shares_used']
+                for key in keys_to_clear:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.success("データをクリアしました。Excelファイルを再アップロードしてください。")
+                st.rerun()
+                
         except Exception as e:
             st.error(f"Excel読み込みエラー: {e}")
 

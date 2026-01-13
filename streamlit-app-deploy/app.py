@@ -605,10 +605,10 @@ with right:
                             price_per_share = st.session_state['price_per_share']
                             shares_used = st.session_state['shares_used']
                             
-                            st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>1株当たり価値</div><div style='font-size: 2.25rem; font-weight: 600;'>{price_per_share:,.2f} <span style='font-size: 0.875rem; font-weight: 400;'>円</span></div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='font-size: 0.875rem; color: rgb(49, 51, 63);'>1株当たり価値</div><div style='font-size: 2.25rem; font-weight: 600;'>{price_per_share:,.0f} <span style='font-size: 0.875rem; font-weight: 400;'>円</span></div>", unsafe_allow_html=True)
                             
                             st.write("**計算式:**")
-                            st.markdown(f"1株当たり価値 = {equity_value_for_share:,.0f}<span style='font-size: 0.8em;'>百万円</span> × 1,000,000 ÷ {shares_used:,.0f}株 = {price_per_share:,.2f} <span style='font-size: 0.8em;'>円</span>", unsafe_allow_html=True)
+                            st.markdown(f"1株当たり価値 = {equity_value_for_share:,.0f}<span style='font-size: 0.8em;'>百万円</span> × 1,000,000 ÷ {shares_used:,.0f}株 = {price_per_share:,.0f} <span style='font-size: 0.8em;'>円</span>", unsafe_allow_html=True)
                     
                     with col_sh2:
                         pass

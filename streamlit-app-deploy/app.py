@@ -125,7 +125,6 @@ with left:
                             del st.session_state[key]
                     st.success("データをクリアしました。Excelファイルを再アップロードしてください。")
                     st.rerun()
-                st.rerun()
                 
         except Exception as e:
             st.error(f"Excel読み込みエラー: {e}")

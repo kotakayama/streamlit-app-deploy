@@ -67,7 +67,6 @@ with left:
             # 新しいファイルなので、古いfcf_planをクリア
             if 'fcf_plan' in st.session_state:
                 del st.session_state['fcf_plan']
-            st.info("新しいExcelファイルが検出されました。")
         
         try:
             sheets = list_sheet_names(plan_file)
@@ -431,7 +430,6 @@ with right:
                                     st.session_state['pv_terminal_value'] = pv_tv
                                     st.session_state['forecast_years'] = forecast_years
                                     st.session_state['tv_g_used'] = g
-                                    st.rerun()
                         else:
                             st.warning("FCFデータが見つかりません")
                     

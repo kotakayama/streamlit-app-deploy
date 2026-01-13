@@ -344,11 +344,8 @@ with right:
                     col_tv1, col_tv2 = st.columns(2)
                     with col_tv1:
                         if available_periods:
-                            # フォームキーに保存された期間を含めて、確実に再レンダリング
-                            form_key = f"tv_form_{st.session_state.get('tv_display_start', 'none')}_{st.session_state.get('tv_display_end', 'none')}"
-                            
                             # フォームを使用して、値の変更時の自動再実行を防止
-                            with st.form(key=form_key):
+                            with st.form(key="tv_calculation_form"):
                                 # 開始年度選択ドロップダウン
                                 # 保存された開始年度を使用（なければ最初の年度）
                                 saved_start = st.session_state.get('tv_display_start')
@@ -426,10 +423,8 @@ with right:
                                 
                                 if wacc_tv <= g:
                                     st.error("WACC > g である必要があります（現在のWACC≤g）")
-                                    st.rerun()
                                 elif fcf_last <= 0:
                                     st.error("最終年FCFが正の値である必要があります")
-                                    st.rerun()
                                 else:
                                     tv = (fcf_last * (1 + g)) / (wacc_tv - g)
                                     pv_tv = tv / (1 + wacc_tv) ** forecast_years

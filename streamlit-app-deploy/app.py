@@ -393,9 +393,10 @@ with right:
                                 display_end = st.session_state.get('tv_display_end', end_period)
                             else:
                                 # 初期表示用（ボタン押下前）
-                                end_index = available_periods.index(end_period)
+                                start_idx = available_periods.index(start_period)
+                                end_idx = available_periods.index(end_period)
                                 display_fcf = period_to_fcf[end_period]
-                                display_years = end_index - start_index + 1
+                                display_years = end_idx - start_idx + 1
                                 display_start = start_period
                                 display_end = end_period
                             

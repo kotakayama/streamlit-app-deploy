@@ -95,33 +95,9 @@ with left:
                     
                     # FCF計画（NOPATベース）も一緒に抽出（デフォルト税率30%）
                     try:
-                        # デバッグ出力をキャプチャするためにstdoutをリダイレクト
-                        import io
-                        import sys
-                        old_stdout = sys.stdout
-                        sys.stdout = captured_output = io.StringIO()
-                        
                         fcf_plan = extract_future_fcf_plan_nopat(plan_file, tax_rate=0.30)
-                        
-                        # stdoutを元に戻す
-                        sys.stdout = old_stdout
-                        debug_output = captured_output.getvalue()
-                        
                         st.session_state['fcf_plan'] = fcf_plan
                         st.info(f"FCF plan (NOPAT-based) extracted: {len(fcf_plan)} periods")
-                        
-                        # デバッグ出力を表示
-                        if debug_output:
-                            with st.expander("🔍 NOPAT計算のデバッグ情報", expanded=True):
-                                st.code(debug_output)
-                        
-                        # 最初の期間のNOPATを表示して確認
-                        if not fcf_plan.empty and 'NOPAT' in fcf_plan.columns:
-                            first_period = fcf_plan.iloc[0]
-                            if pd.notna(first_period['NOPAT']):
-                                st.success(f"✓ NOPAT計算完了: {first_period['period']} = {first_period['NOPAT']:.2f} 百万円")
-                            else:
-                                st.error(f"⚠️ NOPAT計算失敗: {first_period['period']}のNOPATがNaNです")
                     except Exception as fcf_err:
                         st.warning(f"FCF plan extraction failed: {str(fcf_err)}")
                     
@@ -261,20 +237,10 @@ with right:
         if 'fcf_plan' in st.session_state and not st.session_state['fcf_plan'].empty:
             st.write("**FCF計画（NOPAT + 減価償却 − CAPEX − Δ運転資本）※税率デフォルト30%、単位：百万円**")
             fcf_plan = st.session_state['fcf_plan'].copy()
-            
-            # デバッグ: 元のデータを確認
-            st.write(f"DEBUG: fcf_planの形状: {fcf_plan.shape}")
-            st.write(f"DEBUG: fcf_planのカラム: {fcf_plan.columns.tolist()}")
-            st.write(f"DEBUG: NOPAT列の最初の3つの値: {fcf_plan['NOPAT'].head(3).tolist() if 'NOPAT' in fcf_plan.columns else 'NOPATカラムなし'}")
-            st.write("DEBUG: 元のfcf_plan（フォーマット前）:")
-            st.dataframe(fcf_plan.head(), use_container_width=True)
-            
             # 数値列のフォーマット（データは既に百万円単位）
             for col in fcf_plan.columns:
                 if col != 'period':
                     fcf_plan[col] = fcf_plan[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "")
-            
-            st.write("DEBUG: フォーマット後のfcf_plan:")
             st.dataframe(fcf_plan, use_container_width=True)
             
             # WACC計算セクション（FCF表の後に表示）

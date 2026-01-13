@@ -361,22 +361,19 @@ with right:
                                     help="予測期間の開始年度を選択してください"
                                 )
                                 
-                                # 最終年度選択ドロップダウン（開始年度以降のみ）
-                                start_index = available_periods.index(start_period)
-                                end_period_options = available_periods[start_index:]
-                                
+                                # 最終年度選択ドロップダウン（全期間から選択可能）
                                 # 保存された最終年度を使用（なければ最後の年度）
                                 saved_end = st.session_state.get('tv_display_end')
                                 
-                                # 保存された最終年度が現在のオプションリストに存在する場合はそれを使用
-                                if saved_end and saved_end in end_period_options:
-                                    default_end_idx = end_period_options.index(saved_end)
+                                # 保存された最終年度が全期間リストに存在する場合はそれを使用
+                                if saved_end and saved_end in available_periods:
+                                    default_end_idx = available_periods.index(saved_end)
                                 else:
-                                    default_end_idx = len(end_period_options) - 1
+                                    default_end_idx = len(available_periods) - 1
                                 
                                 end_period = st.selectbox(
                                     "最終年度を選択",
-                                    options=end_period_options,
+                                    options=available_periods,
                                     index=default_end_idx,
                                     help="Terminal Value計算に使用する最終年度を選択してください"
                                 )
@@ -411,28 +408,33 @@ with right:
                                 st.session_state['tv_display_start'] = start_period
                                 st.session_state['tv_display_end'] = end_period
                                 
-                                g = g_input / 100.0
                                 start_idx = available_periods.index(start_period)
                                 end_idx = available_periods.index(end_period)
-                                fcf_last = period_to_fcf[end_period]
-                                forecast_years = end_idx - start_idx + 1
                                 
-                                # 計算用の値を保存
-                                st.session_state['tv_fcf_last'] = fcf_last
-                                st.session_state['tv_forecast_years'] = forecast_years
-                                
-                                if wacc_tv <= g:
-                                    st.error("WACC > g である必要があります（現在のWACC≤g）")
-                                elif fcf_last <= 0:
-                                    st.error("最終年FCFが正の値である必要があります")
+                                # 開始年度 <= 最終年度のチェック
+                                if start_idx > end_idx:
+                                    st.error("開始年度は最終年度以前である必要があります")
                                 else:
-                                    tv = (fcf_last * (1 + g)) / (wacc_tv - g)
-                                    pv_tv = tv / (1 + wacc_tv) ** forecast_years
+                                    g = g_input / 100.0
+                                    fcf_last = period_to_fcf[end_period]
+                                    forecast_years = end_idx - start_idx + 1
                                     
-                                    st.session_state['terminal_value'] = tv
-                                    st.session_state['pv_terminal_value'] = pv_tv
-                                    st.session_state['forecast_years'] = forecast_years
-                                    st.session_state['tv_g_used'] = g
+                                    # 計算用の値を保存
+                                    st.session_state['tv_fcf_last'] = fcf_last
+                                    st.session_state['tv_forecast_years'] = forecast_years
+                                    
+                                    if wacc_tv <= g:
+                                        st.error("WACC > g である必要があります（現在のWACC≤g）")
+                                    elif fcf_last <= 0:
+                                        st.error("最終年FCFが正の値である必要があります")
+                                    else:
+                                        tv = (fcf_last * (1 + g)) / (wacc_tv - g)
+                                        pv_tv = tv / (1 + wacc_tv) ** forecast_years
+                                        
+                                        st.session_state['terminal_value'] = tv
+                                        st.session_state['pv_terminal_value'] = pv_tv
+                                        st.session_state['forecast_years'] = forecast_years
+                                        st.session_state['tv_g_used'] = g
                         else:
                             st.warning("FCFデータが見つかりません")
                     

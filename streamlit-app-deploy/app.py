@@ -407,22 +407,26 @@ with right:
                             
                             # フォーム送信時の処理
                             if submit_button:
+                                # まず最初に選択された値をsession_stateに保存
+                                st.session_state['tv_display_start'] = start_period
+                                st.session_state['tv_display_end'] = end_period
+                                
                                 g = g_input / 100.0
                                 start_idx = available_periods.index(start_period)
                                 end_idx = available_periods.index(end_period)
                                 fcf_last = period_to_fcf[end_period]
                                 forecast_years = end_idx - start_idx + 1
                                 
-                                # 表示用の値を保存（フォーム送信時の値を確実に保存）
+                                # 計算用の値を保存
                                 st.session_state['tv_fcf_last'] = fcf_last
                                 st.session_state['tv_forecast_years'] = forecast_years
-                                st.session_state['tv_display_start'] = start_period
-                                st.session_state['tv_display_end'] = end_period
                                 
                                 if wacc_tv <= g:
                                     st.error("WACC > g である必要があります（現在のWACC≤g）")
+                                    st.rerun()
                                 elif fcf_last <= 0:
                                     st.error("最終年FCFが正の値である必要があります")
+                                    st.rerun()
                                 else:
                                     tv = (fcf_last * (1 + g)) / (wacc_tv - g)
                                     pv_tv = tv / (1 + wacc_tv) ** forecast_years

@@ -575,40 +575,43 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
             else:
                 # Fallback: Excel直接読み取り（複数列に項目がある場合に対応）
                 try:
-                    df_raw = pd.read_excel(xlsx_file, sheet_name="FS_年次", header=None)
-                    # 期間列を特定（行0に日付がある想定）
-                    date_row = df_raw.iloc[0]
-                    period_cols = {}
-                    for col_idx in range(len(date_row)):
-                        val = date_row.iloc[col_idx]
-                        if pd.notna(val) and hasattr(val, 'strftime'):
-                            period_str = val.strftime('%Y-%m-%d')
-                            period_cols[col_idx] = period_str
-                    
-                    # 営業利益の行を探す（列0-4のいずれかに「営業利益」がある行）
-                    ebit_row_idx = None
-                    for row_idx in range(len(df_raw)):
-                        for col_idx in range(min(5, len(df_raw.columns))):
-                            val = df_raw.iloc[row_idx, col_idx]
-                            if pd.notna(val) and str(val).strip() == '営業利益':
-                                ebit_row_idx = row_idx
-                                break
-                        if ebit_row_idx is not None:
-                            break
-                    
-                    if ebit_row_idx is not None and period_cols:
-                        # 営業利益の値を抽出
-                        ebit_row = df_raw.iloc[ebit_row_idx]
-                        ebit_dict = {}
-                        for col_idx, period_str in period_cols.items():
-                            val = ebit_row.iloc[col_idx]
-                            if pd.notna(val) and isinstance(val, (int, float)):
-                                ebit_dict[period_str] = float(val)
+                    df_raw = pd.read_excel(xlsx_file, sheet_name="FS_年次")
+                    # 期間列を特定（行0の列15以降に日付がある）
+                    if not df_raw.empty and len(df_raw) > 0:
+                        date_row = df_raw.iloc[0]
+                        period_cols = {}
+                        for col_name in df_raw.columns:
+                            val = date_row[col_name]
+                            if pd.notna(val) and isinstance(val, (pd.Timestamp, pd._libs.tslibs.timestamps.Timestamp)):
+                                period_str = pd.to_datetime(val).strftime('%Y-%m-%d')
+                                period_cols[col_name] = period_str
                         
-                        if ebit_dict:
-                            ebit_s = pd.Series(ebit_dict).reindex(idx)
-                            nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
-                            print(f"DEBUG: 営業利益を Excel から直接取得しました（行{ebit_row_idx}）")
+                        # 営業利益の行を探す（列0-4のいずれかに「営業利益」がある行）
+                        ebit_row_idx = None
+                        for row_idx in range(len(df_raw)):
+                            row = df_raw.iloc[row_idx]
+                            # 最初の5列をチェック
+                            for col_name in list(df_raw.columns)[:5]:
+                                val = row[col_name]
+                                if pd.notna(val) and str(val).strip() == '営業利益':
+                                    ebit_row_idx = row_idx
+                                    break
+                            if ebit_row_idx is not None:
+                                break
+                        
+                        if ebit_row_idx is not None and period_cols:
+                            # 営業利益の値を抽出
+                            ebit_row = df_raw.iloc[ebit_row_idx]
+                            ebit_dict = {}
+                            for col_name, period_str in period_cols.items():
+                                val = ebit_row[col_name]
+                                if pd.notna(val) and isinstance(val, (int, float, np.integer, np.floating)):
+                                    ebit_dict[period_str] = float(val)
+                            
+                            if ebit_dict:
+                                ebit_s = pd.Series(ebit_dict).reindex(idx)
+                                nopat_s = (ebit_s.astype(float) * (1 - float(tax_rate)))
+                                print(f"DEBUG: 営業利益を Excel から直接取得しました（行{ebit_row_idx}）")
                 except Exception as e:
                     print(f"DEBUG: Excel直接読み取り失敗: {e}")
 

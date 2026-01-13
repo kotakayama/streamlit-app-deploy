@@ -114,15 +114,17 @@ with left:
                 except Exception as e:
                     st.error(f"Plan extraction failed: {e}")
             
-            # データをクリアして再計算ボタン
-            if st.button("🔄 データをクリアして再計算", help="アップロードしたデータをクリアして、最初からやり直します"):
-                keys_to_clear = ['fcf_plan', 'wacc_calculated', 'wacc_inputs', 'terminal_value', 'pv_terminal_value', 
-                               'forecast_years', 'tv_g_used', 'tv_fcf_last', 'tv_forecast_years', 'tv_display_start', 
-                               'tv_display_end', 'net_debt', 'equity_value', 'price_per_share', 'shares_used']
-                for key in keys_to_clear:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.success("データをクリアしました。Excelファイルを再アップロードしてください。")
+            # データをクリアして再計算ボタン（FCF生成後のみ表示）
+            if 'fcf_plan' in st.session_state:
+                if st.button("🔄 データをクリアして再計算", help="アップロードしたデータをクリアして、最初からやり直します"):
+                    keys_to_clear = ['fcf_plan', 'wacc_calculated', 'wacc_inputs', 'terminal_value', 'pv_terminal_value', 
+                                   'forecast_years', 'tv_g_used', 'tv_fcf_last', 'tv_forecast_years', 'tv_display_start', 
+                                   'tv_display_end', 'net_debt', 'equity_value', 'price_per_share', 'shares_used']
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.success("データをクリアしました。Excelファイルを再アップロードしてください。")
+                    st.rerun()
                 st.rerun()
                 
         except Exception as e:
@@ -346,38 +348,39 @@ with right:
                             # フォームを使用して、値の変更時の自動再実行を防止
                             with st.form(key="tv_calculation_form"):
                                 # 開始年度選択ドロップダウン
-                                # デフォルト値を設定（保存された値があればそれを使用）
-                                default_start_idx = 0
-                                if 'tv_display_start' in st.session_state and st.session_state['tv_display_start'] in available_periods:
-                                    default_start_idx = available_periods.index(st.session_state['tv_display_start'])
+                                # 保存された開始年度を使用（なければ最初の年度）
+                                saved_start = st.session_state.get('tv_display_start')
+                                if saved_start and saved_start in available_periods:
+                                    default_start_idx = available_periods.index(saved_start)
+                                else:
+                                    default_start_idx = 0
                                 
                                 start_period = st.selectbox(
                                     "開始年度を選択",
                                     options=available_periods,
                                     index=default_start_idx,
-                                    help="予測期間の開始年度を選択してください",
-                                    key="tv_start_period_select"
+                                    help="予測期間の開始年度を選択してください"
                                 )
                                 
                                 # 最終年度選択ドロップダウン（開始年度以降のみ）
                                 start_index = available_periods.index(start_period)
                                 end_period_options = available_periods[start_index:]
                                 
-                                # デフォルト値を設定（保存された値があればそれを使用）
-                                # 開始年度が変更された場合は、最終年度を最後にリセット
-                                default_end_idx = len(end_period_options) - 1
-                                if 'tv_display_end' in st.session_state:
-                                    saved_end = st.session_state['tv_display_end']
-                                    # 開始年度が変更されていないか、保存された最終年度が新しいオプションリストに存在する場合のみ使用
-                                    if saved_end in end_period_options:
-                                        default_end_idx = end_period_options.index(saved_end)
+                                # 保存された最終年度を使用（なければ最後の年度）
+                                saved_end = st.session_state.get('tv_display_end')
+                                saved_start_check = st.session_state.get('tv_display_start')
+                                
+                                # 開始年度が変わっていない、かつ保存された最終年度が有効な場合のみ使用
+                                if saved_end and saved_start_check == start_period and saved_end in end_period_options:
+                                    default_end_idx = end_period_options.index(saved_end)
+                                else:
+                                    default_end_idx = len(end_period_options) - 1
                                 
                                 end_period = st.selectbox(
                                     "最終年度を選択",
                                     options=end_period_options,
                                     index=default_end_idx,
-                                    help="Terminal Value計算に使用する最終年度を選択してください",
-                                    key="tv_end_period_select"
+                                    help="Terminal Value計算に使用する最終年度を選択してください"
                                 )
                                 
                                 # デフォルト成長率を設定

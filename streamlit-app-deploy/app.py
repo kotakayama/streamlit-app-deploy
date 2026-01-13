@@ -433,7 +433,6 @@ with right:
                                     st.session_state['pv_terminal_value'] = pv_tv
                                     st.session_state['forecast_years'] = forecast_years
                                     st.session_state['tv_g_used'] = g
-                                    st.rerun()
                         else:
                             st.warning("FCFデータが見つかりません")
                     

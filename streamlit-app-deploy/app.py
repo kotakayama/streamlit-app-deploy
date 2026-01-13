@@ -264,7 +264,7 @@ with right:
                     st.write("**有利子負債コスト**")
                     cost_of_debt = st.number_input("Rd (%)", value=2.17, step=0.01, key="wacc_rd")
                 with col3:
-                    st.write("**資本構成（帳簿価額）、単位：百万円**")
+                    st.write("**資本構成（帳簿価額）**")
                     book_equity = st.number_input("自己資本 E (百万円)", value=equity_default, min_value=0.0, key="wacc_equity", help="最新の決算書（BS）の純資産")
                     book_debt = st.number_input("有利子負債 D (百万円)", value=total_debt_default, min_value=0.0, key="wacc_debt", help="短期借入金 + 長期借入金")
                 with col4:

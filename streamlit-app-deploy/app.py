@@ -413,7 +413,7 @@ with right:
                                 fcf_last = period_to_fcf[end_period]
                                 forecast_years = end_idx - start_idx + 1
                                 
-                                # 表示用の値を保存
+                                # 表示用の値を保存（フォーム送信時の値を確実に保存）
                                 st.session_state['tv_fcf_last'] = fcf_last
                                 st.session_state['tv_forecast_years'] = forecast_years
                                 st.session_state['tv_display_start'] = start_period
@@ -431,6 +431,7 @@ with right:
                                     st.session_state['pv_terminal_value'] = pv_tv
                                     st.session_state['forecast_years'] = forecast_years
                                     st.session_state['tv_g_used'] = g
+                                    st.rerun()
                         else:
                             st.warning("FCFデータが見つかりません")
                     

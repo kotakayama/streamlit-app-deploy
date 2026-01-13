@@ -344,8 +344,11 @@ with right:
                     col_tv1, col_tv2 = st.columns(2)
                     with col_tv1:
                         if available_periods:
+                            # フォームキーに保存された期間を含めて、確実に再レンダリング
+                            form_key = f"tv_form_{st.session_state.get('tv_display_start', 'none')}_{st.session_state.get('tv_display_end', 'none')}"
+                            
                             # フォームを使用して、値の変更時の自動再実行を防止
-                            with st.form(key="tv_calculation_form"):
+                            with st.form(key=form_key):
                                 # 開始年度選択ドロップダウン
                                 # 保存された開始年度を使用（なければ最初の年度）
                                 saved_start = st.session_state.get('tv_display_start')

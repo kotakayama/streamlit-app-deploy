@@ -562,7 +562,20 @@ def extract_future_fcf_plan_nopat(xlsx_file: str, tax_rate: float = 0.30, foreca
             return pd.DataFrame(columns=["period", "NOPAT", "減価償却", "CAPEX", "Δ運転資本", "FCF"])
         
         print(f"DEBUG: extract_future_fcf_plan_nopat - 取得された期間: {periods}")
-        idx = pd.Index(periods)
+        
+        # 期間を日付形式に正規化（YYYY-MM-DD形式に統一）
+        normalized_periods = []
+        for p in periods:
+            try:
+                # 文字列を日付に変換してからYYYY-MM-DD形式に
+                dt = pd.to_datetime(p)
+                normalized_periods.append(dt.strftime('%Y-%m-%d'))
+            except:
+                # 変換できない場合はそのまま
+                normalized_periods.append(str(p))
+        
+        print(f"DEBUG: 正規化後の期間: {normalized_periods}")
+        idx = pd.Index(normalized_periods)
 
         pl_long = pl.get("long") if pl else pd.DataFrame(columns=["metric", "period", "value"])
         bs_long = bs.get("long") if bs else pd.DataFrame(columns=["metric", "period", "value"])

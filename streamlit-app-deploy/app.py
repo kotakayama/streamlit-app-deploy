@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 import pandas as pd
 import streamlit as st
+import hashlib
 
 from core.ingest_pdf import ingest_financials_from_pdf
 from core.ingest_plan_excel import list_sheet_names, extract_yearly_table
@@ -30,6 +31,35 @@ load_dotenv()
 
 st.set_page_config(page_title="Valuation App", layout="wide")
 st.title("Valuation App")
+
+# キャッシュ用のヘルパー関数
+def get_file_hash(file):
+    """ファイルのハッシュ値を計算してキャッシュキーとして使用"""
+    file.seek(0)
+    file_hash = hashlib.md5(file.read()).hexdigest()
+    file.seek(0)
+    return file_hash
+
+@st.cache_data(show_spinner=False)
+def cached_ingest_pdf(file_hash, file_bytes):
+    """PDFの読み込みをキャッシュ"""
+    import io
+    file = io.BytesIO(file_bytes)
+    return ingest_financials_from_pdf(file)
+
+@st.cache_data(show_spinner=False)
+def cached_extract_fcf_plan(file_hash, file_bytes, tax_rate):
+    """FCFプランの抽出をキャッシュ"""
+    import io
+    file = io.BytesIO(file_bytes)
+    return extract_future_fcf_plan_nopat(file, tax_rate=tax_rate)
+
+@st.cache_data(show_spinner=False)
+def cached_extract_yearly_table(file_hash, file_bytes, sheet_name):
+    """Excel年次テーブルの抽出をキャッシュ"""
+    import io
+    file = io.BytesIO(file_bytes)
+    return extract_yearly_table(file, sheet_name)
 
 # ファイルアップローダーのボタンテキストをカスタマイズ
 st.markdown("""
@@ -74,7 +104,10 @@ with left:
             sheet_choice = st.selectbox("将来の売上・費用計画が記載されたシートを選択してください", sheet_options)
             if sheet_choice != "シートが選択されていません" and st.button("▶️ 事業計画からキャッシュフローを生成", key="extract_plan", type="secondary"):
                 try:
-                    plan_results = extract_yearly_table(plan_file, sheet_choice)
+                    # Excelをキャッシュして読み込み
+                    plan_hash = get_file_hash(plan_file)
+                    plan_bytes = plan_file.getvalue()
+                    plan_results = cached_extract_yearly_table(plan_hash, plan_bytes, sheet_choice)
                     st.session_state['plan_extract'] = plan_results
                     # plan_tidy は long format を保持（sheet, metric, period, value, unit）
                     st.session_state['plan_tidy'] = plan_results['long']
@@ -82,7 +115,7 @@ with left:
                     
                     # FCF計画（NOPATベース）も一緒に抽出（デフォルト税率30%）
                     try:
-                        fcf_plan = extract_future_fcf_plan_nopat(plan_file, tax_rate=0.30)
+                        fcf_plan = cached_extract_fcf_plan(plan_hash, plan_bytes, tax_rate=0.30)
                         st.session_state['fcf_plan'] = fcf_plan
                         st.info(f"FCF plan (NOPAT-based) extracted: {len(fcf_plan)} periods")
                     except Exception as fcf_err:
@@ -92,7 +125,10 @@ with left:
                     stored_pdf = st.session_state.get('pdf_file')
                     if stored_pdf is not None:
                         try:
-                            raw, meta = ingest_financials_from_pdf(stored_pdf)
+                            # PDFをキャッシュして読み込み
+                            stored_pdf_hash = get_file_hash(stored_pdf)
+                            stored_pdf_bytes = stored_pdf.getvalue()
+                            raw, meta = cached_ingest_pdf(stored_pdf_hash, stored_pdf_bytes)
                             standardized = {
                                 "revenue": raw["pl"].get("revenue"),
                                 "operating_income": raw["pl"].get("operating_income"),
@@ -141,7 +177,10 @@ with right:
             plan = st.session_state['plan_extract']
             evlog.add("plan.sheet", plan['sheet'], source_type="plan_excel", raw_label=plan['sheet'], notes=f"unit={plan.get('unit')}")
 
-        raw, meta = ingest_financials_from_pdf(pdf_file)
+        # PDFをキャッシュして読み込み
+        pdf_hash = get_file_hash(pdf_file)
+        pdf_bytes = pdf_file.getvalue()
+        raw, meta = cached_ingest_pdf(pdf_hash, pdf_bytes)
 
         # Evidence: PDF抽出値（ページ番号つき）
         bs_page = (meta.get("bs_page") or 0) + 1

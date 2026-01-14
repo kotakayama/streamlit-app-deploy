@@ -169,30 +169,47 @@ with right:
     st.markdown("<h2>Valuation Summary <span style='font-size: 0.6em;'>（株価算定結果）</span></h2>", unsafe_allow_html=True)
 
     if pdf_file:
-
-        evlog = EvidenceLog()
-
-        # もし事業計画がセッションにあれば、根拠ログに追加
-        if 'plan_extract' in st.session_state:
-            plan = st.session_state['plan_extract']
-            evlog.add("plan.sheet", plan['sheet'], source_type="plan_excel", raw_label=plan['sheet'], notes=f"unit={plan.get('unit')}")
-
-        # PDFをキャッシュして読み込み
+        # PDFファイルのハッシュをチェックして、同じファイルならsession_stateから取得
         pdf_hash = get_file_hash(pdf_file)
-        pdf_bytes = pdf_file.getvalue()
-        raw, meta = cached_ingest_pdf(pdf_hash, pdf_bytes)
+        
+        if 'last_pdf_hash' not in st.session_state or st.session_state['last_pdf_hash'] != pdf_hash:
+            # 新しいPDFファイル、または初回読み込み
+            evlog = EvidenceLog()
+
+            # もし事業計画がセッションにあれば、根拠ログに追加
+            if 'plan_extract' in st.session_state:
+                plan = st.session_state['plan_extract']
+                evlog.add("plan.sheet", plan['sheet'], source_type="plan_excel", raw_label=plan['sheet'], notes=f"unit={plan.get('unit')}")
+
+            # PDFをキャッシュして読み込み
+            pdf_bytes = pdf_file.getvalue()
+            raw, meta = cached_ingest_pdf(pdf_hash, pdf_bytes)
+            
+            # session_stateに保存
+            st.session_state['last_pdf_hash'] = pdf_hash
+            st.session_state['pdf_raw'] = raw
+            st.session_state['pdf_meta'] = meta
+            st.session_state['pdf_evlog'] = evlog
+        else:
+            # 既に処理済みのPDFファイル、session_stateから取得
+            raw = st.session_state['pdf_raw']
+            meta = st.session_state['pdf_meta']
+            evlog = st.session_state.get('pdf_evlog', EvidenceLog())
 
         # Evidence: PDF抽出値（ページ番号つき）
-        bs_page = (meta.get("bs_page") or 0) + 1
-        pl_page = (meta.get("pl_page") or 0) + 1
-        sh_page = (meta.get("shares_page") or 0) + 1 if meta.get("shares_page") is not None else None
+        if 'last_pdf_hash' not in st.session_state or st.session_state['last_pdf_hash'] != pdf_hash:
+            bs_page = (meta.get("bs_page") or 0) + 1
+            pl_page = (meta.get("pl_page") or 0) + 1
+            sh_page = (meta.get("shares_page") or 0) + 1 if meta.get("shares_page") is not None else None
 
-        for k, v in raw.get("pl", {}).items():
-            evlog.add(field_name=f"pl.{k}", value=v, source_type="internal_pdf", page=pl_page, raw_label=k, unit="JPY")
-        for k, v in raw.get("bs", {}).items():
-            evlog.add(field_name=f"bs.{k}", value=v, source_type="internal_pdf", page=bs_page, raw_label=k, unit="JPY")
-        for k, v in raw.get("shares", {}).items():
-            evlog.add(field_name=f"shares.{k}", value=v, source_type="internal_pdf", page=sh_page, raw_label=k, unit="shares")
+            for k, v in raw.get("pl", {}).items():
+                evlog.add(field_name=f"pl.{k}", value=v, source_type="internal_pdf", page=pl_page, raw_label=k, unit="JPY")
+            for k, v in raw.get("bs", {}).items():
+                evlog.add(field_name=f"bs.{k}", value=v, source_type="internal_pdf", page=bs_page, raw_label=k, unit="JPY")
+            for k, v in raw.get("shares", {}).items():
+                evlog.add(field_name=f"shares.{k}", value=v, source_type="internal_pdf", page=sh_page, raw_label=k, unit="shares")
+            
+            st.session_state['pdf_evlog'] = evlog
 
         # --- 人間向けラベル（日本語） ---
         DISPLAY_LABELS = {

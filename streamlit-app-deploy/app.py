@@ -61,6 +61,13 @@ def cached_extract_yearly_table(file_hash, file_bytes, sheet_name):
     file = io.BytesIO(file_bytes)
     return extract_yearly_table(file, sheet_name)
 
+@st.cache_data(show_spinner=False)
+def cached_list_sheet_names(file_hash, file_bytes):
+    """Excelシート名リストの取得をキャッシュ"""
+    import io
+    file = io.BytesIO(file_bytes)
+    return list_sheet_names(file)
+
 # ファイルアップローダーのボタンテキストをカスタマイズ
 st.markdown("""
 <style>
@@ -99,14 +106,15 @@ with left:
                 del st.session_state['fcf_plan']
         
         try:
-            sheets = list_sheet_names(plan_file)
+            # Excelシート名をキャッシュして取得
+            plan_hash = get_file_hash(plan_file)
+            plan_bytes = plan_file.getvalue()
+            sheets = cached_list_sheet_names(plan_hash, plan_bytes)
             sheet_options = ["シートが選択されていません"] + sheets
             sheet_choice = st.selectbox("将来の売上・費用計画が記載されたシートを選択してください", sheet_options)
             if sheet_choice != "シートが選択されていません" and st.button("▶️ 事業計画からキャッシュフローを生成", key="extract_plan", type="secondary"):
                 try:
-                    # Excelをキャッシュして読み込み
-                    plan_hash = get_file_hash(plan_file)
-                    plan_bytes = plan_file.getvalue()
+                    # Excelをキャッシュして読み込み（ハッシュは上で計算済み）
                     plan_results = cached_extract_yearly_table(plan_hash, plan_bytes, sheet_choice)
                     st.session_state['plan_extract'] = plan_results
                     # plan_tidy は long format を保持（sheet, metric, period, value, unit）

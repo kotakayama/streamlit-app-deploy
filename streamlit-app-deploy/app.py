@@ -125,10 +125,15 @@ with left:
                     stored_pdf = st.session_state.get('pdf_file')
                     if stored_pdf is not None:
                         try:
-                            # PDFをキャッシュして読み込み
-                            stored_pdf_hash = get_file_hash(stored_pdf)
-                            stored_pdf_bytes = stored_pdf.getvalue()
-                            raw, meta = cached_ingest_pdf(stored_pdf_hash, stored_pdf_bytes)
+                            # PDF処理結果がsession_stateにあればそれを使用
+                            if 'pdf_raw' in st.session_state:
+                                raw = st.session_state['pdf_raw']
+                            else:
+                                # キャッシュから読み込み
+                                stored_pdf_hash = get_file_hash(stored_pdf)
+                                stored_pdf_bytes = stored_pdf.getvalue()
+                                raw, meta = cached_ingest_pdf(stored_pdf_hash, stored_pdf_bytes)
+                            
                             standardized = {
                                 "revenue": raw["pl"].get("revenue"),
                                 "operating_income": raw["pl"].get("operating_income"),

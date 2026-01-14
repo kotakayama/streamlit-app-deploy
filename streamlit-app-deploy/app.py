@@ -185,19 +185,7 @@ with right:
             pdf_bytes = pdf_file.getvalue()
             raw, meta = cached_ingest_pdf(pdf_hash, pdf_bytes)
             
-            # session_stateに保存
-            st.session_state['last_pdf_hash'] = pdf_hash
-            st.session_state['pdf_raw'] = raw
-            st.session_state['pdf_meta'] = meta
-            st.session_state['pdf_evlog'] = evlog
-        else:
-            # 既に処理済みのPDFファイル、session_stateから取得
-            raw = st.session_state['pdf_raw']
-            meta = st.session_state['pdf_meta']
-            evlog = st.session_state.get('pdf_evlog', EvidenceLog())
-
-        # Evidence: PDF抽出値（ページ番号つき）
-        if 'last_pdf_hash' not in st.session_state or st.session_state['last_pdf_hash'] != pdf_hash:
+            # Evidence: PDF抽出値（ページ番号つき）
             bs_page = (meta.get("bs_page") or 0) + 1
             pl_page = (meta.get("pl_page") or 0) + 1
             sh_page = (meta.get("shares_page") or 0) + 1 if meta.get("shares_page") is not None else None
@@ -209,7 +197,16 @@ with right:
             for k, v in raw.get("shares", {}).items():
                 evlog.add(field_name=f"shares.{k}", value=v, source_type="internal_pdf", page=sh_page, raw_label=k, unit="shares")
             
+            # session_stateに保存
+            st.session_state['last_pdf_hash'] = pdf_hash
+            st.session_state['pdf_raw'] = raw
+            st.session_state['pdf_meta'] = meta
             st.session_state['pdf_evlog'] = evlog
+        else:
+            # 既に処理済みのPDFファイル、session_stateから取得
+            raw = st.session_state['pdf_raw']
+            meta = st.session_state['pdf_meta']
+            evlog = st.session_state.get('pdf_evlog', EvidenceLog())
 
         # --- 人間向けラベル（日本語） ---
         DISPLAY_LABELS = {

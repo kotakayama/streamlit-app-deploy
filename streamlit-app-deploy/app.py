@@ -560,27 +560,29 @@ with right:
                     total_debt = (debt_short + debt_long) / 1_000_000
                     cash = (standardized_bs.get('cash', 0) or 0) / 1_000_000
                     
-                    col_eq1, col_eq2, col_eq3 = st.columns(3)
-                    with col_eq1:
-                        st.number_input("有利子負債 (百万円)", value=float(total_debt), 
-                                        format="%.2f", key="debt_for_equity")
+                    # フォームを使用して、入力値変更時の自動再実行を防止
+                    with st.form(key="equity_value_form"):
+                        col_eq1, col_eq2, col_eq3 = st.columns(3)
+                        with col_eq1:
+                            debt_for_equity = st.number_input("有利子負債 (百万円)", value=float(total_debt), format="%.2f")
+                            
+                        with col_eq2:
+                            cash_for_equity = st.number_input("現金及び現金同等物 (百万円)", value=float(cash), format="%.2f")
+                        
+                        with col_eq3:
+                            pass
                         
                         st.write("")
-                        if st.button("▶️ 株式価値を計算する", key="equity_value_calc_btn", type="secondary"):
-                            debt_input = st.session_state.get('debt_for_equity', total_debt)  # 百万円単位
-                            cash_input = st.session_state.get('cash_for_equity', cash)  # 百万円単位
-                            net_debt = debt_input - cash_input  # 百万円単位
-                            equity_value = enterprise_value - net_debt  # 百万円単位
-                            
-                            st.session_state['net_debt'] = net_debt
-                            st.session_state['equity_value'] = equity_value
+                        equity_submit_button = st.form_submit_button("▶️ 株式価値を計算する", type="secondary")
                     
-                    with col_eq2:
-                        st.number_input("現金及び現金同等物 (百万円)", value=float(cash), 
-                                        format="%.2f", key="cash_for_equity")
-                    
-                    with col_eq3:
-                        pass
+                    if equity_submit_button:
+                        net_debt = debt_for_equity - cash_for_equity  # 百万円単位
+                        equity_value = enterprise_value - net_debt  # 百万円単位
+                        
+                        st.session_state['net_debt'] = net_debt
+                        st.session_state['equity_value'] = equity_value
+                        st.session_state['debt_for_equity'] = debt_for_equity
+                        st.session_state['cash_for_equity'] = cash_for_equity
                 
                 if 'equity_value' in st.session_state and 'net_debt' in st.session_state:
                     net_debt = st.session_state['net_debt']
